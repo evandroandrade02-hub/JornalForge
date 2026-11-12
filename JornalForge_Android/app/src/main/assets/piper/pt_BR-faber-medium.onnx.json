@@ -1,0 +1,16 @@
+{
+  "audio": {
+    "sample_rate": 22050,
+    "quality": "medium"
+  },
+  "espeak": {
+    "voice": "pt-br"
+  },
+  "inference": {
+    "noise_scale": 0.667,
+    "length_scale": 1.0526,
+    "noise_w": 0.8
+  },
+  "model_card": "pt_BR-faber-medium.onnx",
+  "speed_target": 0.95
+}

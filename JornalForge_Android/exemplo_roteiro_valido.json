@@ -1,0 +1,25 @@
+{
+  "video_title": "O VERDADEIRO INTERESSE POR TRÁS DA DECISÃO",
+  "subtitle": "Análise investigativa sobre os bastidores",
+  "editorial_disclaimer": "Reportagem baseada exclusivamente nos documentos públicos da fonte.",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "editorial_role": "gancho_de_curiosidade",
+      "narration": "Quando uma mudança repentina é anunciada como benefício público, quase ninguém observa as cláusulas silenciosas. ... Mas os dados oficiais revelam outra direção.",
+      "on_screen_text": "CLÁUSULAS SILENCIOSAS NO DOCUMENTO",
+      "text_rate": "high",
+      "lower_third": "Análise documental",
+      "keywords": ["mudança", "cláusulas", "dados"]
+    },
+    {
+      "scene_number": 2,
+      "editorial_role": "explicacao_didatica",
+      "narration": "Na prática, o mecanismo transfere custos operacionais enquanto concentra o controle decisório em poucos agentes.",
+      "on_screen_text": "COMO FUNCIONA O MECANISMO",
+      "text_rate": "low",
+      "lower_third": "Impacto direto",
+      "keywords": ["custos", "controle"]
+    }
+  ]
+}
