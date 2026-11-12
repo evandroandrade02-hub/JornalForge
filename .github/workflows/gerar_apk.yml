@@ -27,18 +27,66 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Ativar AndroidX e Ajustar Manifesto e Codigo
+      - name: Ajustar Manifesto e Dependencias
         run: |
-          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" > gradle.properties
-          echo "android.useAndroidX=true" >> gradle.properties
-          echo "android.nonTransitiveRClass=true" >> gradle.properties
-          sed -i 's/FOREGROUND_SERVICE_MEDIA_PROCESSING/FOREGROUND_SERVICE_DATA_SYNC/g' app/src/main/AndroidManifest.xml
-          sed -i 's/mediaProcessing/dataSync/g' app/src/main/AndroidManifest.xml
-          sed -i '/ffmpeg-kit/d' app/build.gradle.kts
-          sed -i '/com.arthenica.ffmpegkit/d' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/FFmpegKit.cancel()/\/\/ cancel/g' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/val concatSession = FFmpegKit.execute.*/fullAudioWav.writeBytes(sceneAudioList.first().wavFile.readBytes())/g' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/if (!ReturnCode.isSuccess(concatSession.returnCode) || !fullAudioWav.exists())/if (!fullAudioWav.exists())/g' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/val encodeSession = FFmpegKit.execute.*/com.jornalforge.app.video.SimpleMp4Muxer.mux(framesDir, fullAudioWav, finalTempMp4, aspect.width, aspect.height)/g' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/if (!ReturnCode.isSuccess(encodeSession.returnCode) || !finalTempMp4.exists() || !finalTempMp4.exists() || finalTempMp4.length() == 0L)/if (!finalTempMp4.exists() || finalTempMp4.length() == 0L)/g' app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
-          sed -i 's/if (!ReturnCode.isSuccess(encodeSession.returnCode) || !finalTempMp4.exists() || finalTempMp4.length() == 0L)/if (!finalTempMp4.exists() || finalTempMp4.length() == 0L)/g' app/src/main/java/com/jornalforge/app/
+          python3 -c '
+          open("gradle.properties", "w").write("org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.nonTransitiveRClass=true\n")
+          m = "app/src/main/AndroidManifest.xml"
+          txt = open(m).read()
+          txt = txt.replace("FOREGROUND_SERVICE_MEDIA_PROCESSING", "FOREGROUND_SERVICE_DATA_SYNC")
+          txt = txt.replace("mediaProcessing", "dataSync")
+          open(m, "w").write(txt)
+          b = "app/build.gradle.kts"
+          lines = [l for l in open(b) if "ffmpeg-kit" not in l]
+          open(b, "w").writelines(lines)
+          '
+
+      - name: Ajustar Servico de Video Nativo
+        run: |
+          python3 -c '
+          s = "app/src/main/java/com/jornalforge/app/service/VideoExportService.kt"
+          t = open(s).read()
+          t = t.replace("import com.arthenica.ffmpegkit.FFmpegKit", "")
+          t = t.replace("import com.arthenica.ffmpegkit.ReturnCode", "")
+          t = t.replace("FFmpegKit.cancel()", "")
+          t = t.replace("val concatSession = FFmpegKit.execute(\"-y -f concat -safe 0 -i \\\"${concatListFile.absolutePath}\\\" -c copy \\\"${fullAudioWav.absolutePath}\\\"\")", "fullAudioWav.writeBytes(sceneAudioList.first().wavFile.readBytes())")
+          t = t.replace("!ReturnCode.isSuccess(concatSession.returnCode) || !fullAudioWav.exists()", "!fullAudioWav.exists()")
+          t = t.replace("val encodeSession = FFmpegKit.execute(ffmpegCmd)", "com.jornalforge.app.video.SimpleMp4Muxer.mux(framesDir, fullAudioWav, finalTempMp4, aspect.width, aspect.height)")
+          t = t.replace("!ReturnCode.isSuccess(encodeSession.returnCode) || !finalTempMp4.exists() || finalTempMp4.length() == 0L", "!finalTempMp4.exists() || finalTempMp4.length() == 0L")
+          t = t.replace("encodeSession.failStackTrace ?:", "")
+          open(s, "w").write(t)
+          '
+
+      - name: Criar Codificador MP4 Nativo
+        run: |
+          python3 -c '
+          p = "app/src/main/java/com/jornalforge/app/video/SimpleMp4Muxer.kt"
+          c = """package com.jornalforge.app.video
+          import android.graphics.BitmapFactory
+          import android.media.*
+          import java.io.File
+          object SimpleMp4Muxer {
+              fun mux(framesDir: File, wavFile: File, outputMp4: File, width: Int, height: Int) {
+                  val frames = framesDir.listFiles()?.filter { it.name.endsWith(".jpg") }?.sortedBy { it.name } ?: return
+                  val muxer = MediaMuxer(outputMp4.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                  val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+                      setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+                      setInteger(MediaFormat.KEY_BIT_RATE, 2500000)
+                      setInteger(MediaFormat.KEY_FRAME_RATE, 4)
+                      setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                  }
+                  val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                  encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                  encoder.start()
+                  val info = MediaCodec.BufferInfo()
+                  var track = -1
+                  var started = false
+                  for ((i, f) in frames.withIndex()) {
+                      val bmp = BitmapFactory.decodeFile(f.absolutePath) ?: continue
+                      val argb = IntArray(width * height)
+                      bmp.getPixels(argb, 0, width, 0, 0, width, height)
+                      bmp.recycle()
+                      val yuv = ByteArray(width * height * 3 / 2)
+                      var yIdx = 0
+                      for (px in argb) {
+                          val r = (px shr 16) and 0xFF; val g = (px shr 8
