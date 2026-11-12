@@ -59,34 +59,15 @@ jobs:
 
       - name: Criar Codificador MP4 Nativo
         run: |
-          python3 -c '
-          p = "app/src/main/java/com/jornalforge/app/video/SimpleMp4Muxer.kt"
-          c = """package com.jornalforge.app.video
-          import android.graphics.BitmapFactory
-          import android.media.*
-          import java.io.File
-          object SimpleMp4Muxer {
-              fun mux(framesDir: File, wavFile: File, outputMp4: File, width: Int, height: Int) {
-                  val frames = framesDir.listFiles()?.filter { it.name.endsWith(".jpg") }?.sortedBy { it.name } ?: return
-                  val muxer = MediaMuxer(outputMp4.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                  val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
-                      setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-                      setInteger(MediaFormat.KEY_BIT_RATE, 2500000)
-                      setInteger(MediaFormat.KEY_FRAME_RATE, 4)
-                      setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-                  }
-                  val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-                  encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                  encoder.start()
-                  val info = MediaCodec.BufferInfo()
-                  var track = -1
-                  var started = false
-                  for ((i, f) in frames.withIndex()) {
-                      val bmp = BitmapFactory.decodeFile(f.absolutePath) ?: continue
-                      val argb = IntArray(width * height)
-                      bmp.getPixels(argb, 0, width, 0, 0, width, height)
-                      bmp.recycle()
-                      val yuv = ByteArray(width * height * 3 / 2)
-                      var yIdx = 0
-                      for (px in argb) {
-                          val r = (px shr 16) and 0xFF; val g = (px shr 8
+          echo "cGFja2FnZSBjb20uam9ybmFsZm9yZ2UuYXBwLnZpZGVvCgppbXBvcnQgYW5kcm9pZC5ncmFwaGljcy5CaXRtYXBGYWN0b3J5CmltcG9ydCBhbmRyb2lkLm1lZGlhLioKaW1wb3J0IGphdmEuaW8uRmlsZQoKb2JqZWN0IFNpbXBsZU1wNE11eGVyIHsKICAgIGZ1biBtdXgoZnJhbWVzRGlyOiBGaWxlLCB3YXZGaWxlOiBGaWxlLCBvdXRwdXRNcDQ6IEZpbGUsIHdpZHRoOiBJbnQsIGhlaWdodDogSW50KSB7CiAgICAgICAgdmFsIGZyYW1lcyA9IGZyYW1lc0Rpci5saXN0RmlsZXMoKT8uZmlsdGVyIHsgaXQubmFtZS5lbmRzV2l0aCgiLmpwZyIpIH0/LnNvcnRlZEJ5IHsgaXQubmFtZSB9ID86IHJldHVybgogICAgICAgIHZhbCBtdXhlciA9IE1lZGlhTXV4ZXIob3V0cHV0TXA0LmFic29sdXRlUGF0aCwgTWVkaWFNdXhlci5PdXRwdXRGb3JtYXQuTVVYRVJfT1VUUFVUX01QRUdfNCkKICAgICAgICB2YWwgZm9ybWF0ID0gTWVkaWFGb3JtYXQuY3JlYXRlVmlkZW9Gb3JtYXQoTWVkaWFGb3JtYXQuTUlNRVRZUEVfVklERU9fQVZDLCB3aWR0aCwgaGVpZ2h0KS5hcHBseSB7CiAgICAgICAgICAgIHNldEludGVnZXIoTWVkaWFGb3JtYXQuS0VZX0NPTE9SX0ZPUk1BVCwgTWVkaWFDb2RlY0luZm8uQ29kZWNDYXBhYmlsaXRpZXMuQ09MT1JfRm9ybWF0WVVWNDIwRmxleGlibGUpCiAgICAgICAgICAgIHNldEludGVnZXIoTWVkaWFGb3JtYXQuS0VZX0JJVF9SQVRFLCAyNTAwMDAwKQogICAgICAgICAgICBzZXRJbnRlZ2VyKE1lZGlhRm9ybWF0LktFWV9GUkFNRV9SQVRFLCA0KQogICAgICAgICAgICBzZXRJbnRlZ2VyKE1lZGlhRm9ybWF0LktFWV9JX0ZSQU1FX0lOVEVSVkFMLCAxKQogICAgICAgIH0KICAgICAgICB2YWwgZW5jb2RlciA9IE1lZGlhQ29kZWMuY3JlYXRlRW5jb2RlckJ5VHlwZShNZWRpYUZvcm1hdC5NSU1FVFlQRV9WSURFT19BVkMpCiAgICAgICAgZW5jb2Rlci5jb25maWd1cmUoZm9ybWF0LCBudWxsLCBudWxsLCBNZWRpYUNvZGVjLkNPTkZJR1VSRV9GTEFHX0VOQ09ERSkKICAgICAgICBlbmNvZGVyLnN0YXJ0KCkKICAgICAgICB2YWwgaW5mbyA9IE1lZGlhQ29kZWMuQnVmZmVySW5mbygpCiAgICAgICAgdmFyIHRyYWNrID0gLTEKICAgICAgICB2YXIgc3RhcnRlZCA9IGZhbHNlCiAgICAgICAgZm9yICgoaSwgZikgaW4gZnJhbWVzLndpdGhJbmRleCgpKSB7CiAgICAgICAgICAgIHZhbCBibXAgPSBCaXRtYXBGYWN0b3J5LmRlY29kZUZpbGUoZi5hYnNvbHV0ZVBhdGgpID86IGNvbnRpbnVlCiAgICAgICAgICAgIHZhbCBhcmdiID0gSW50QXJyYXkod2lkdGggKiBoZWlnaHQpCiAgICAgICAgICAgIGJtcC5nZXRQaXhlbHMoYXJnYiwgMCwgd2lkdGgsIDAsIDAsIHdpZHRoLCBoZWlnaHQpCiAgICAgICAgICAgIGJtcC5yZWN5Y2xlKCkKICAgICAgICAgICAgdmFsIHl1diA9IEJ5dGVBcnJheSh3aWR0aCAqIGhlaWdodCAqIDMgLyAyKQogICAgICAgICAgICB2YXIgeUlkeCA9IDAKICAgICAgICAgICAgZm9yIChweCBpbiBhcmdiKSB7CiAgICAgICAgICAgICAgICB2YWwgciA9IChweCBzaHIgMTYpIGFuZCAweEZGCiAgICAgICAgICAgICAgICB2YWwgZyA9IChweCBzaHIgOCkgYW5kIDB4RkYKICAgICAgICAgICAgICAgIHZhbCBiID0gcHggYW5kIDB4RkYKICAgICAgICAgICAgICAgIHl1dlt5SWR4KytdID0gKCgoNjYgKiByICsgMTI5ICogZyArIDI1ICogYiArIDEyOCkgc2hyIDgpICsgMTYpLmNvZXJjZUluKDAsIDI1NSkudG9CeXRlKCkKICAgICAgICAgICAgfQogICAgICAgICAgICBmb3IgKGsgaW4gd2lkdGggKiBoZWlnaHQgdW50aWwgeXV2LnNpemUpIHl1dltrXSA9IDEyOC50b0J5dGUoKQogICAgICAgICAgICB2YWwgaW5JZHggPSBlbmNvZGVyLmRlcXVldWVJbnB1dEJ1ZmZlcigxMDAwMCkKICAgICAgICAgICAgaWYgKGluSWR4ID49IDApIHsKICAgICAgICAgICAgICAgIHZhbCBidWYgPSBlbmNvZGVyLmdldElucHV0QnVmZmVyKGluSWR4KSEhCiAgICAgICAgICAgICAgICBidWYuY2xlYXIoKQogICAgICAgICAgICAgICAgYnVmLnB1dCh5dXYpCiAgICAgICAgICAgICAgICBlbmNvZGVyLnF1ZXVlSW5wdXRCdWZmZXIoaW5JZHgsIDAsIHl1di5zaXplLCBpICogMjUwMDAwTCwgMCkKICAgICAgICAgICAgfQogICAgICAgICAgICB3aGlsZSAodHJ1ZSkgewogICAgICAgICAgICAgICAgdmFsIG91dElkeCA9IGVuY29kZXIuZGVxdWV1ZU91dHB1dEJ1ZmZlcihpbmZvLCAxMDAwMCkKICAgICAgICAgICAgICAgIGlmIChvdXRJZHggPT0gTWVkaWFDb2RlYy5JTkZPX09VVFBVVF9GT1JNQVRfQ0hBTkdFRCkgewogICAgICAgICAgICAgICAgICAgIHRyYWNrID0gbXV4ZXIuYWRkVHJhY2soZW5jb2Rlci5vdXRwdXRGb3JtYXQpCiAgICAgICAgICAgICAgICAgICAgbXV4ZXIuc3RhcnQoKQogICAgICAgICAgICAgICAgICAgIHN0YXJ0ZWQgPSB0cnVlCiAgICAgICAgICAgICAgICB9IGVsc2UgaWYgKG91dElkeCA+PSAwKSB7CiAgICAgICAgICAgICAgICAgICAgdmFsIG91dEJ1ZiA9IGVuY29kZXIuZ2V0T3V0cHV0QnVmZmVyKG91dElkeCkhIQogICAgICAgICAgICAgICAgICAgIGlmIChzdGFydGVkICYmIGluZm8uc2l6ZSA+IDApIG11eGVyLndyaXRlU2FtcGxlRGF0YSh0cmFjaywgb3V0QnVmLCBpbmZvKQogICAgICAgICAgICAgICAgICAgIGVuY29kZXIucmVsZWFzZU91dHB1dEJ1ZmZlcihvdXRJZHgsIGZhbHNlKQogICAgICAgICAgICAgICAgfSBlbHNlIGJyZWFrCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICAgICAgdmFsIGVvcyA9IGVuY29kZXIuZGVxdWV1ZUlucHV0QnVmZmVyKDEwMDAwKQogICAgICAgIGlmIChlb3MgPj0gMCkgZW5jb2Rlci5xdWV1ZUlucHV0QnVmZmVyKGVvcywgMCwgMCwgZnJhbWVzLnNpemUgKiAyNTAwMDBMLCBNZWRpYUNvZGVjLkJVRkZFUl9GTEFHX0VORF9PRl9TVFJFQU0pCiAgICAgICAgd2hpbGUgKHRydWUpIHsKICAgICAgICAgICAgdmFsIG91dElkeCA9IGVuY29kZXIuZGVxdWV1ZU91dHB1dEJ1ZmZlcihpbmZvLCAxMDAwMCkKICAgICAgICAgICAgaWYgKG91dElkeCA+PSAwKSB7CiAgICAgICAgICAgICAgICB2YWwgb3V0QnVmID0gZW5jb2Rlci5nZXRPdXRwdXRCdWZmZXIob3V0SWR4KSEhCiAgICAgICAgICAgICAgICBpZiAoc3RhcnRlZCAmJiBpbmZvLnNpemUgPiAwKSBtdXhlci53cml0ZVNhbXBsZURhdGEodHJhY2ssIG91dEJ1ZiwgaW5mbykKICAgICAgICAgICAgICAgIGVuY29kZXIucmVsZWFzZU91dHB1dEJ1ZmZlcihvdXRJZHgsIGZhbHNlKQogICAgICAgICAgICAgICAgaWYgKChpbmZvLmZsYWdzIGFuZCBNZWRpYUNvZGVjLkJVRkZFUl9GTEFHX0VORF9PRl9TVFJFQU0pICE9IDApIGJyZWFrCiAgICAgICAgICAgIH0gZWxzZSBicmVhawogICAgICAgIH0KICAgICAgICBlbmNvZGVyLnN0b3AoKQogICAgICAgIGVuY29kZXIucmVsZWFzZSgpCiAgICAgICAgaWYgKHN0YXJ0ZWQpIG11eGVyLnN0b3AoKQogICAgICAgIG11eGVyLnJlbGVhc2UoKQogICAgfQp9Cg==" | base64 -d > app/src/main/java/com/jornalforge/app/video/SimpleMp4Muxer.kt
+
+      - name: Compilar APK
+        run: gradle assembleDebug assembleRelease
+
+      - name: Publicar APK para Download
+        uses: actions/upload-artifact@v4
+        with:
+          name: JornalForge-APK-Pronto
+          path: |
+            JornalForge_Android/app/build/outputs/apk/debug/app-debug.apk
+            JornalForge_Android/app/build/outputs/apk/release/app-release.apk
