@@ -27,7 +27,7 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Ajustar Manifesto, Dependencias e FrameRenderer (Texto +15% com Margem)
+      - name: Ajustar Manifesto, Dependencias, FrameRenderer e Opcao 57s no ScriptParser
         run: |
           python3 -c '
           import re, os
@@ -44,15 +44,12 @@ jobs:
           lines = [l for l in open(b) if "ffmpeg-kit" not in l]
           open(b, "w").writelines(lines)
 
-          # Ajustar FrameRenderer.kt: remover tint azulado e aumentar texto em ~14% com margem de seguranca
+          # Ajustar FrameRenderer.kt: manter correcao de cor e texto +14% com margem de seguranca
           fr_path = "app/src/main/java/com/jornalforge/app/video/FrameRenderer.kt"
           if os.path.exists(fr_path):
               fr = open(fr_path).read()
-
-              # 1. Remover qualquer ColorFilter/tint que deixe texto ou avatar azulado
               fr = re.sub(r"\.colorFilter\s*=\s*[^\n]+", "", fr)
 
-              # 2. Aumentar textSize em 14% (mais de 10% maior) mantendo proporcao
               def boost_font(match):
                   prefix = match.group(1)
                   val = float(match.group(2))
@@ -61,25 +58,474 @@ jobs:
 
               fr = re.sub(r"(textSize\s*=\s*)(\d+(?:\.\d+)?)f", boost_font, fr)
 
-              # 3. Aumentar margem de seguranca e ajustar quebra de linha para nao sair do quadrante
               def shrink_line_chars(match):
                   prefix = match.group(1)
                   val = int(match.group(2))
-                  # Reduz ~14% a largura maxima de caracteres por linha para compensar a fonte maior com folga
                   new_val = max(16, int(val * 0.85))
                   return f"{prefix}{new_val}"
 
               fr = re.sub(r"(maxCharsPerLine\s*=\s*|wrapText\([^,]+,\s*)(\d+)", shrink_line_chars, fr)
-
               open(fr_path, "w").write(fr)
+
+          # Ajustar ScriptParser.kt para suportar duracao <= 57 segundos (quando durationMinutes == 1)
+          sp_path = "app/src/main/java/com/jornalforge/app/model/ScriptParser.kt"
+          if os.path.exists(sp_path):
+              sp = open(sp_path).read()
+              old_fn = "fun buildJournalisticPrompt(theme: String, durationMinutes: Int, sourceBase: String): String {"
+              new_fn = """fun buildJournalisticPrompt(theme: String, durationMinutes: Int, sourceBase: String): String {
+                  if (durationMinutes == 1) {
+                      val basePrompt = buildJournalisticPrompt(theme, 4, sourceBase)
+                      return "ATENCAO - MODO VIDEO CURTO (SHORTS/REELS): O video final deve ter NO MAXIMO 57 SEGUNDOS de duracao total (gere entre 3 e 5 cenas curtas, totalizando no maximo 115 a 130 palavras de narracao somadas). Ignore qualquer mencao a 4 minutos abaixo e cumpra rigorosamente o limite de 57 segundos.\\n\\n" + basePrompt
+                  }"""
+              if old_fn in sp and "MODO VIDEO CURTO" not in sp:
+                  sp = sp.replace(old_fn, new_fn, 1)
+                  open(sp_path, "w").write(sp)
           '
 
-      - name: Atualizar MainActivity Service e Muxer com Correcao de Cores YUV e Audio AAC
+      - name: Atualizar MainActivity (com opcao 57s e 4 fonemas), Service e Muxer
         run: |
-          echo "QGZpbGU6T3B0SW4oYW5kcm9pZHguY29tcG9zZS5tYXRlcmlhbDMuRXhwZXJpbWVudGFsTWF0ZXJpYWwzQXBpOjpjbGFzcykKcGFja2FnZSBjb20uam9ybmFsZm9yZ2UuYXBwCgppbXBvcnQgYW5kcm9pZC5jb250ZW50LkNsaXBEYXRhCmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuQ2xpcGJvYXJkTWFuYWdlcgppbXBvcnQgYW5kcm9pZC5jb250ZW50LkNvbnRleHQKaW1wb3J0IGFuZHJvaWQuY29udGVudC5JbnRlbnQKaW1wb3J0IGFuZHJvaWQubmV0LlVyaQppbXBvcnQgYW5kcm9pZC5vcy5CdW5kbGUKaW1wb3J0IGFuZHJvaWQud2lkZ2V0LlRvYXN0CmltcG9ydCBhbmRyb2lkeC5hY3Rpdml0eS5Db21wb25lbnRBY3Rpdml0eQppbXBvcnQgYW5kcm9pZHguYWN0aXZpdHkuY29tcG9zZS5yZW1lbWJlckxhdW5jaGVyRm9yQWN0aXZpdHlSZXN1bHQKaW1wb3J0IGFuZHJvaWR4LmFjdGl2aXR5LmNvbXBvc2Uuc2V0Q29udGVudAppbXBvcnQgYW5kcm9pZHguYWN0aXZpdHkucmVzdWx0LmNvbnRyYWN0LkFjdGl2aXR5UmVzdWx0Q29udHJhY3RzCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24uSW1hZ2UKaW1wb3J0IGFuZHJvaWR4LmNvbXBvc2UuZm91bmRhdGlvbi5iYWNrZ3JvdW5kCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24uYm9yZGVyCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24ubGF5b3V0LioKaW1wb3J0IGFuZHJvaWR4LmNvbXBvc2UuZm91bmRhdGlvbi5yZW1lbWJlclNjcm9sbFN0YXRlCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24uc2hhcGUuUm91bmRlZENvcm5lclNoYXBlCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLmZvdW5kYXRpb24udmVydGljYWxTY3JvbGwKaW1wb3J0IGFuZHJvaWR4LmNvbXBvc2UubWF0ZXJpYWwzLioKaW1wb3J0IGFuZHJvaWR4LmNvbXBvc2UucnVudGltZS4qCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLnVpLkFsaWdubWVudAppbXBvcnQgYW5kcm9pZHguY29tcG9zZS51aS5Nb2RpZmllcgppbXBvcnQgYW5kcm9pZHguY29tcG9zZS51aS5ncmFwaGljcy5Db2xvcgppbXBvcnQgYW5kcm9pZHguY29tcG9zZS51aS5wbGF0Zm9ybS5Mb2NhbENvbnRleHQKaW1wb3J0IGFuZHJvaWR4LmNvbXBvc2UudWkucmVzLnBhaW50ZXJSZXNvdXJjZQppbXBvcnQgYW5kcm9pZHguY29tcG9zZS51aS50ZXh0LmZvbnQuRm9udFdlaWdodAppbXBvcnQgYW5kcm9pZHguY29tcG9zZS51aS51bml0LmRwCmltcG9ydCBhbmRyb2lkeC5jb21wb3NlLnVpLnVuaXQuc3AKaW1wb3J0IGNvbS5qb3JuYWxmb3JnZS5hcHAuYXVkaW8uUGlwZXJUdHNFbmdpbmUKaW1wb3J0IGNvbS5qb3JuYWxmb3JnZS5hcHAubW9kZWwuU2NyaXB0UGFyc2VyCmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLm1vZGVsLlZpZGVvQXNwZWN0CmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLnNlcnZpY2UuRXhwb3J0U3RhdHVzCmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLnNlcnZpY2UuVmlkZW9FeHBvcnRTZXJ2aWNlCmltcG9ydCBqYXZhLmlvLkJ1ZmZlcmVkUmVhZGVyCmltcG9ydCBqYXZhLmlvLklucHV0U3RyZWFtUmVhZGVyCgpjbGFzcyBNYWluQWN0aXZpdHkgOiBDb21wb25lbnRBY3Rpdml0eSgpIHsKICAgIG92ZXJyaWRlIGZ1biBvbkNyZWF0ZShzYXZlZEluc3RhbmNlU3RhdGU6IEJ1bmRsZT8pIHsKICAgICAgICBzdXBlci5vbkNyZWF0ZShzYXZlZEluc3RhbmNlU3RhdGUpCiAgICAgICAgc2V0Q29udGVudCB7CiAgICAgICAgICAgIE1hdGVyaWFsVGhlbWUoCiAgICAgICAgICAgICAgICBjb2xvclNjaGVtZSA9IGRhcmtDb2xvclNjaGVtZSgKICAgICAgICAgICAgICAgICAgICBwcmltYXJ5ID0gQ29sb3IoMHhGRkQ5MjMyMyksCiAgICAgICAgICAgICAgICAgICAgb25QcmltYXJ5ID0gQ29sb3IuV2hpdGUsCiAgICAgICAgICAgICAgICAgICAgYmFja2dyb3VuZCA9IENvbG9yKDB4RkYwQjBFMTQpLAogICAgICAgICAgICAgICAgICAgIHN1cmZhY2UgPSBDb2xvcigweEZGMTUxQTI0KSwKICAgICAgICAgICAgICAgICAgICBvblN1cmZhY2UgPSBDb2xvcigweEZGRUNFRkY0KQogICAgICAgICAgICAgICAgKQogICAgICAgICAgICApIHsKICAgICAgICAgICAgICAgIEpvcm5hbEZvcmdlU2NyZWVuKCkKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KfQoKQENvbXBvc2FibGUKZnVuIEpvcm5hbEZvcmdlU2NyZWVuKCkgewogICAgdmFsIGNvbnRleHQgPSBMb2NhbENvbnRleHQuY3VycmVudAogICAgdmFsIHNjcm9sbFN0YXRlID0gcmVtZW1iZXJTY3JvbGxTdGF0ZSgpCiAgICB2YWwgZXhwb3J0U3RhdHVzIGJ5IFZpZGVvRXhwb3J0U2VydmljZS5zdGF0dXNGbG93LmNvbGxlY3RBc1N0YXRlKCkKCiAgICB2YXIgdGhlbWVUZXh0IGJ5IHJlbWVtYmVyIHsgbXV0YWJsZVN0YXRlT2YoIiIpIH0KICAgIHZhciBzZWxlY3RlZER1cmF0aW9uIGJ5IHJlbWVtYmVyIHsgbXV0YWJsZVN0YXRlT2YoNikgfQogICAgdmFyIHNvdXJjZUJhc2VUZXh0IGJ5IHJlbWVtYmVyIHsgbXV0YWJsZVN0YXRlT2YoIiIpIH0KCiAgICB2YXIganNvbklucHV0IGJ5IHJlbWVtYmVyIHsgbXV0YWJsZVN0YXRlT2YoIiIpIH0KICAgIHZhciB2YWxpZGF0aW9uTWVzc2FnZSBieSByZW1lbWJlciB7IG11dGFibGVTdGF0ZU9mKCJBZ3VhcmRhbmRvIGNvbGFnZW0gb3UgaW1wb3J0YcOnw6NvIGRvIEpTT04uIikgfQogICAgdmFyIGlzSnNvblZhbGlkIGJ5IHJlbWVtYmVyIHsgbXV0YWJsZVN0YXRlT2YoZmFsc2UpIH0KCiAgICB2YXIgc2VsZWN0ZWRBc3BlY3QgYnkgcmVtZW1iZXIgeyBtdXRhYmxlU3RhdGVPZihWaWRlb0FzcGVjdC5IT1JJWk9OVEFMXzE2XzkpIH0KICAgIHZhciBybXNUaHJlc2hvbGQgYnkgcmVtZW1iZXIgeyBtdXRhYmxlU3RhdGVPZig1MjBmKSB9CgogICAgdmFsIGZpbGVQaWNrZXJMYXVuY2hlciA9IHJlbWVtYmVyTGF1bmNoZXJGb3JBY3Rpdml0eVJlc3VsdCgKICAgICAgICBjb250cmFjdCA9IEFjdGl2aXR5UmVzdWx0Q29udHJhY3RzLk9wZW5Eb2N1bWVudCgpCiAgICApIHsgdXJpOiBVcmk/IC0+CiAgICAgICAgdXJpPy5sZXQgewogICAgICAgICAgICB0cnkgewogICAgICAgICAgICAgICAgY29udGV4dC5jb250ZW50UmVzb2x2ZXIub3BlbklucHV0U3RyZWFtKGl0KT8udXNlIHsgc3RyZWFtIC0+CiAgICAgICAgICAgICAgICAgICAgdmFsIGNvbnRlbnQgPSBCdWZmZXJlZFJlYWRlcihJbnB1dFN0cmVhbVJlYWRlcihzdHJlYW0pKS5yZWFkVGV4dCgpCiAgICAgICAgICAgICAgICAgICAganNvbklucHV0ID0gY29udGVudAogICAgICAgICAgICAgICAgICAgIHZhbCByZXMgPSBTY3JpcHRQYXJzZXIudmFsaWRhdGVBbmROb3JtYWxpemUoY29udGVudCkKICAgICAgICAgICAgICAgICAgICByZXMub25TdWNjZXNzIHsgc2NyaXB0IC0+CiAgICAgICAgICAgICAgICAgICAgICAgIGlzSnNvblZhbGlkID0gdHJ1ZQogICAgICAgICAgICAgICAgICAgICAgICB2YWxpZGF0aW9uTWVzc2FnZSA9ICJKU09OIFbDoWxpZG8hIFTDrXR1bG86ICcke3NjcmlwdC52aWRlb1RpdGxlfScgfCAke3NjcmlwdC5zY2VuZXMuc2l6ZX0gY2VuYXMgbm9ybWFsaXphZGFzLiIKICAgICAgICAgICAgICAgICAgICB9Lm9uRmFpbHVyZSB7IGVyciAtPgogICAgICAgICAgICAgICAgICAgICAgICBpc0pzb25WYWxpZCA9IGZhbHNlCiAgICAgICAgICAgICAgICAgICAgICAgIHZhbGlkYXRpb25NZXNzYWdlID0gIkVycm86ICR7ZXJyLmxvY2FsaXplZE1lc3NhZ2V9IgogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfSBjYXRjaCAoZTogRXhjZXB0aW9uKSB7CiAgICAgICAgICAgICAgICB2YWxpZGF0aW9uTWVzc2FnZSA9ICJFcnJvIGFvIGxlciBhcnF1aXZvOiAke2UubG9jYWxpemVkTWVzc2FnZX0iCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9CgogICAgQ29sdW1uKAogICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIKICAgICAgICAgICAgLmZpbGxNYXhTaXplKCkKICAgICAgICAgICAgLmJhY2tncm91bmQoQ29sb3IoMHhGRjBCMEUxNCkpCiAgICAgICAgICAgIC52ZXJ0aWNhbFNjcm9sbChzY3JvbGxTdGF0ZSkKICAgICAgICAgICAgLnBhZGRpbmcoMTYuZHApLAogICAgICAgIHZlcnRpY2FsQXJyYW5nZW1lbnQgPSBBcnJhbmdlbWVudC5zcGFjZWRCeSgxNi5kcCkKICAgICkgewogICAgICAgIFJvdygKICAgICAgICAgICAgdmVydGljYWxBbGlnbm1lbnQgPSBBbGlnbm1lbnQuQ2VudGVyVmVydGljYWxseSwKICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci5maWxsTWF4V2lkdGgoKQogICAgICAgICkgewogICAgICAgICAgICBCb3goCiAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyCiAgICAgICAgICAgICAgICAgICAgLndpZHRoKDYuZHApCiAgICAgICAgICAgICAgICAgICAgLmhlaWdodCgzNC5kcCkKICAgICAgICAgICAgICAgICAgICAuYmFja2dyb3VuZChDb2xvcigweEZGRDkyMzIzKSkKICAgICAgICAgICAgKQogICAgICAgICAgICBTcGFjZXIobW9kaWZpZXIgPSBNb2RpZmllci53aWR0aCgxMC5kcCkpCiAgICAgICAgICAgIENvbHVtbiB7CiAgICAgICAgICAgICAgICBUZXh0KAogICAgICAgICAgICAgICAgICAgIHRleHQgPSAiSk9STkFMRk9SR0UgQU5EUk9JRCIsCiAgICAgICAgICAgICAgICAgICAgY29sb3IgPSBDb2xvci5XaGl0ZSwKICAgICAgICAgICAgICAgICAgICBmb250U2l6ZSA9IDIyLnNwLAogICAgICAgICAgICAgICAgICAgIGZvbnRXZWlnaHQgPSBGb250V2VpZ2h0LkV4dHJhQm9sZAogICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgVGV4dCgKICAgICAgICAgICAgICAgICAgICB0ZXh0ID0gIkdlcmFkb3IgSm9ybmFsw61zdGljbyDigKIgVm96IEZhYmVyIFBULUJSIOKAoiBFeHBvcnRhw6fDo28gTVA0IMOabmljYSIsCiAgICAgICAgICAgICAgICAgICAgY29sb3IgPSBDb2xvcigweEZGOUFBNUI4KSwKICAgICAgICAgICAgICAgICAgICBmb250U2l6ZSA9IDEyLnNwCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgIFN0ZXBDYXJkKHRpdGxlID0gIkVUQVBBIDEg4oCiIEZvbnRlIGUgQ29uZmlndXJhw6fDo28iKSB7CiAgICAgICAgICAgIE91dGxpbmVkVGV4dEZpZWxkKAogICAgICAgICAgICAgICAgdmFsdWUgPSB0aGVtZVRleHQsCiAgICAgICAgICAgICAgICBvblZhbHVlQ2hhbmdlID0geyB0aGVtZVRleHQgPSBpdCB9LAogICAgICAgICAgICAgICAgbGFiZWwgPSB7IFRleHQoIlRlbWEgKEV4OiBPIHZlcmRhZGVpcm8gaW50ZXJlc3NlIHBvciB0csOhcyBkZSB1bWEgZGVjaXPDo28pIikgfSwKICAgICAgICAgICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIuZmlsbE1heFdpZHRoKCksCiAgICAgICAgICAgICAgICBzaW5nbGVMaW5lID0gdHJ1ZQogICAgICAgICAgICApCgogICAgICAgICAgICBTcGFjZXIobW9kaWZpZXIgPSBNb2RpZmllci5oZWlnaHQoOC5kcCkpCiAgICAgICAgICAgIFRleHQoIkR1cmHDp8OjbyBhcHJveGltYWRhOiIsIGNvbG9yID0gQ29sb3IoMHhGRkI4QzJENCksIGZvbnRTaXplID0gMTMuc3ApCiAgICAgICAgICAgIFJvdygKICAgICAgICAgICAgICAgIGhvcml6b250YWxBcnJhbmdlbWVudCA9IEFycmFuZ2VtZW50LnNwYWNlZEJ5KDguZHApLAogICAgICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci5maWxsTWF4V2lkdGgoKQogICAgICAgICAgICApIHsKICAgICAgICAgICAgICAgIGxpc3RPZig0LCA2LCA4LCAxMCkuZm9yRWFjaCB7IG1pbiAtPgogICAgICAgICAgICAgICAgICAgIEZpbHRlckNoaXAoCiAgICAgICAgICAgICAgICAgICAgICAgIHNlbGVjdGVkID0gc2VsZWN0ZWREdXJhdGlvbiA9PSBtaW4sCiAgICAgICAgICAgICAgICAgICAgICAgIG9uQ2xpY2sgPSB7IHNlbGVjdGVkRHVyYXRpb24gPSBtaW4gfSwKICAgICAgICAgICAgICAgICAgICAgICAgbGFiZWwgPSB7IFRleHQoIiRtaW4gbWluIikgfQogICAgICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgT3V0bGluZWRUZXh0RmllbGQoCiAgICAgICAgICAgICAgICB2YWx1ZSA9IHNvdXJjZUJhc2VUZXh0LAogICAgICAgICAgICAgICAgb25WYWx1ZUNoYW5nZSA9IHsgc291cmNlQmFzZVRleHQgPSBpdCB9LAogICAgICAgICAgICAgICAgbGFiZWwgPSB7IFRleHQoIkZvbnRlLWJhc2UgKEFydGlnbywgdHJhbnNjcmnDp8OjbywgcmVzdW1vIG91IGNvbnRleHRvKSIpIH0sCiAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyCiAgICAgICAgICAgICAgICAgICAgLmZpbGxNYXhXaWR0aCgpCiAgICAgICAgICAgICAgICAgICAgLmhlaWdodCgxMzAuZHApCiAgICAgICAgICAgICkKCiAgICAgICAgICAgIGlmIChzb3VyY2VCYXNlVGV4dC50cmltKCkuc3RhcnRzV2l0aCgiaHR0cDovLyIpIHx8IHNvdXJjZUJhc2VUZXh0LnRyaW0oKS5zdGFydHNXaXRoKCJodHRwczovLyIpKSB7CiAgICAgICAgICAgICAgICBUZXh0KAogICAgICAgICAgICAgICAgICAgIHRleHQgPSAi4pqg77iPIFZvY8OqIGNvbG91IHVtIGxpbmsuIFBhcmEgbcOheGltYSBmaWRlbGlkYWRlIGpvcm5hbMOtc3RpY2EsIGZvcm5lw6dhIHRhbWLDqW0gYSB0cmFuc2NyacOnw6NvIG91IHJlc3VtbyBkbyBjb250ZcO6ZG8tYmFzZS4iLAogICAgICAgICAgICAgICAgICAgIGNvbG9yID0gQ29sb3IoMHhGRkZGQjc0RCksCiAgICAgICAgICAgICAgICAgICAgZm9udFNpemUgPSAxMi5zcCwKICAgICAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyLnBhZGRpbmcodG9wID0gNC5kcCkKICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgfQoKICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDguZHApKQogICAgICAgICAgICBCdXR0b24oCiAgICAgICAgICAgICAgICBvbkNsaWNrID0gewogICAgICAgICAgICAgICAgICAgIGlmICh0aGVtZVRleHQuaXNCbGFuaygpIHx8IHNvdXJjZUJhc2VUZXh0LmlzQmxhbmsoKSkgewogICAgICAgICAgICAgICAgICAgICAgICBUb2FzdC5tYWtlVGV4dChjb250ZXh0LCAiUHJlZW5jaGEgbyB0ZW1hIGUgYSBmb250ZS1iYXNlLiIsIFRvYXN0LkxFTkdUSF9TSE9SVCkuc2hvdygpCiAgICAgICAgICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgICAgICAgICAgdmFsIHByb21wdCA9IFNjcmlwdFBhcnNlci5idWlsZEpvdXJuYWxpc3RpY1Byb21wdCh0aGVtZVRleHQsIHNlbGVjdGVkRHVyYXRpb24sIHNvdXJjZUJhc2VUZXh0KQogICAgICAgICAgICAgICAgICAgICAgICB2YWwgY2xpcGJvYXJkID0gY29udGV4dC5nZXRTeXN0ZW1TZXJ2aWNlKENvbnRleHQuQ0xJUEJPQVJEX1NFUlZJQ0UpIGFzIENsaXBib2FyZE1hbmFnZXIKICAgICAgICAgICAgICAgICAgICAgICAgY2xpcGJvYXJkLnNldFByaW1hcnlDbGlwKENsaXBEYXRhLm5ld1BsYWluVGV4dCgiUHJvbXB0IEpvcm5hbEZvcmdlIiwgcHJvbXB0KSkKICAgICAgICAgICAgICAgICAgICAgICAgVG9hc3QubWFrZVRleHQoY29udGV4dCwgIlByb21wdCBqb3JuYWzDrXN0aWNvIGdlcmFkbyBlIGNvcGlhZG8hIiwgVG9hc3QuTEVOR1RIX0xPTkcpLnNob3coKQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0sCiAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyLmZpbGxNYXhXaWR0aCgpLAogICAgICAgICAgICAgICAgY29sb3JzID0gQnV0dG9uRGVmYXVsdHMuYnV0dG9uQ29sb3JzKGNvbnRhaW5lckNvbG9yID0gQ29sb3IoMHhGRkQ5MjMyMykpCiAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgVGV4dCgiR2VyYXIgZSBjb3BpYXIgcHJvbXB0IiwgZm9udFdlaWdodCA9IEZvbnRXZWlnaHQuQm9sZCkKICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgU3RlcENhcmQodGl0bGUgPSAiRVRBUEEgMiDigKIgSW1wb3J0YcOnw6NvIGUgVmFsaWRhw6fDo28gZG8gSlNPTiIpIHsKICAgICAgICAgICAgT3V0bGluZWRUZXh0RmllbGQoCiAgICAgICAgICAgICAgICB2YWx1ZSA9IGpzb25JbnB1dCwKICAgICAgICAgICAgICAgIG9uVmFsdWVDaGFuZ2UgPSB7CiAgICAgICAgICAgICAgICAgICAganNvbklucHV0ID0gaXQKICAgICAgICAgICAgICAgICAgICBpc0pzb25WYWxpZCA9IGZhbHNlCiAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICAgICAgbGFiZWwgPSB7IFRleHQoIkNvbGUgYXF1aSBvIHJvdGVpcm8gSlNPTiByZXRvcm5hZG8gcGVsYSBJQSIpIH0sCiAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyCiAgICAgICAgICAgICAgICAgICAgLmZpbGxNYXhXaWR0aCgpCiAgICAgICAgICAgICAgICAgICAgLmhlaWdodCgxNTAuZHApCiAgICAgICAgICAgICkKCiAgICAgICAgICAgIFNwYWNlcihtb2RpZmllciA9IE1vZGlmaWVyLmhlaWdodCg4LmRwKSkKICAgICAgICAgICAgUm93KAogICAgICAgICAgICAgICAgaG9yaXpvbnRhbEFycmFuZ2VtZW50ID0gQXJyYW5nZW1lbnQuc3BhY2VkQnkoOC5kcCksCiAgICAgICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyLmZpbGxNYXhXaWR0aCgpCiAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgT3V0bGluZWRCdXR0b24oCiAgICAgICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICAgICAgdmFsIGNsaXBib2FyZCA9IGNvbnRleHQuZ2V0U3lzdGVtU2VydmljZShDb250ZXh0LkNMSVBCT0FSRF9TRVJWSUNFKSBhcyBDbGlwYm9hcmRNYW5hZ2VyCiAgICAgICAgICAgICAgICAgICAgICAgIHZhbCBjbGlwVGV4dCA9IGNsaXBib2FyZC5wcmltYXJ5Q2xpcD8uZ2V0SXRlbUF0KDApPy50ZXh0Py50b1N0cmluZygpID86ICIiCiAgICAgICAgICAgICAgICAgICAgICAgIGlmIChjbGlwVGV4dC5pc05vdEVtcHR5KCkpIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGpzb25JbnB1dCA9IGNsaXBUZXh0CiAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICAgICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIud2VpZ2h0KDFmKQogICAgICAgICAgICAgICAgKSB7CiAgICAgICAgICAgICAgICAgICAgVGV4dCgiQ29sYXIgw4FyZWEgVHJhbnNmLiIsIGZvbnRTaXplID0gMTIuc3ApCiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgT3V0bGluZWRCdXR0b24oCiAgICAgICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICAgICAgZmlsZVBpY2tlckxhdW5jaGVyLmxhdW5jaChhcnJheU9mKCJhcHBsaWNhdGlvbi9qc29uIiwgInRleHQvcGxhaW4iKSkKICAgICAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICAgICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIud2VpZ2h0KDFmKQogICAgICAgICAgICAgICAgKSB7CiAgICAgICAgICAgICAgICAgICAgVGV4dCgiSW1wb3J0YXIgLmpzb24vLnR4dCIsIGZvbnRTaXplID0gMTIuc3ApCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIFNwYWNlcihtb2RpZmllciA9IE1vZGlmaWVyLmhlaWdodCg4LmRwKSkKICAgICAgICAgICAgQnV0dG9uKAogICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICB2YWwgcmVzdWx0ID0gU2NyaXB0UGFyc2VyLnZhbGlkYXRlQW5kTm9ybWFsaXplKGpzb25JbnB1dCkKICAgICAgICAgICAgICAgICAgICByZXN1bHQub25TdWNjZXNzIHsgc2NyaXB0IC0+CiAgICAgICAgICAgICAgICAgICAgICAgIGlzSnNvblZhbGlkID0gdHJ1ZQogICAgICAgICAgICAgICAgICAgICAgICB2YWxpZGF0aW9uTWVzc2FnZSA9ICLinIUgRXN0cnV0dXJhIHbDoWxpZGEhIFTDrXR1bG86IFwiJHtzY3JpcHQudmlkZW9UaXRsZX1cIiB8ICR7c2NyaXB0LnNjZW5lcy5zaXplfSBjZW5hcyBwcm9udGFzLiIKICAgICAgICAgICAgICAgICAgICB9Lm9uRmFpbHVyZSB7IGVyciAtPgogICAgICAgICAgICAgICAgICAgICAgICBpc0pzb25WYWxpZCA9IGZhbHNlCiAgICAgICAgICAgICAgICAgICAgICAgIHZhbGlkYXRpb25NZXNzYWdlID0gIuKdjCAke2Vyci5sb2NhbGl6ZWRNZXNzYWdlfSIKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9LAogICAgICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci5maWxsTWF4V2lkdGgoKQogICAgICAgICAgICApIHsKICAgICAgICAgICAgICAgIFRleHQoIlZhbGlkYXIgZXN0cnV0dXJhIiwgZm9udFdlaWdodCA9IEZvbnRXZWlnaHQuQm9sZCkKICAgICAgICAgICAgfQoKICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDYuZHApKQogICAgICAgICAgICBUZXh0KAogICAgICAgICAgICAgICAgdGV4dCA9IHZhbGlkYXRpb25NZXNzYWdlLAogICAgICAgICAgICAgICAgY29sb3IgPSBpZiAoaXNKc29uVmFsaWQpIENvbG9yKDB4RkY2NkJCNkEpIGVsc2UgQ29sb3IoMHhGRkZGQ0EyOCksCiAgICAgICAgICAgICAgICBmb250U2l6ZSA9IDEzLnNwCiAgICAgICAgICAgICkKICAgICAgICB9CgogICAgICAgIFN0ZXBDYXJkKHRpdGxlID0gIkVUQVBBIDMg4oCiIEZvcm1hdG8gZSBHZXJhw6fDo28gZGUgVsOtZGVvIMOabmljbyIpIHsKICAgICAgICAgICAgVmlkZW9Bc3BlY3QudmFsdWVzKCkuZm9yRWFjaCB7IGFzcGVjdCAtPgogICAgICAgICAgICAgICAgUm93KAogICAgICAgICAgICAgICAgICAgIHZlcnRpY2FsQWxpZ25tZW50ID0gQWxpZ25tZW50LkNlbnRlclZlcnRpY2FsbHksCiAgICAgICAgICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci5maWxsTWF4V2lkdGgoKQogICAgICAgICAgICAgICAgKSB7CiAgICAgICAgICAgICAgICAgICAgUmFkaW9CdXR0b24oCiAgICAgICAgICAgICAgICAgICAgICAgIHNlbGVjdGVkID0gc2VsZWN0ZWRBc3BlY3QgPT0gYXNwZWN0LAogICAgICAgICAgICAgICAgICAgICAgICBvbkNsaWNrID0geyBzZWxlY3RlZEFzcGVjdCA9IGFzcGVjdCB9CiAgICAgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgICAgIFRleHQodGV4dCA9IGFzcGVjdC5sYWJlbCwgY29sb3IgPSBDb2xvci5XaGl0ZSwgZm9udFNpemUgPSAxNC5zcCkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDguZHApKQogICAgICAgICAgICBSb3coCiAgICAgICAgICAgICAgICBob3Jpem9udGFsQXJyYW5nZW1lbnQgPSBBcnJhbmdlbWVudC5zcGFjZWRCeSg4LmRwKSwKICAgICAgICAgICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIuZmlsbE1heFdpZHRoKCkKICAgICAgICAgICAgKSB7CiAgICAgICAgICAgICAgICBCdXR0b24oCiAgICAgICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICAgICAgdmFsIHZhbGlkYXRpb24gPSBTY3JpcHRQYXJzZXIudmFsaWRhdGVBbmROb3JtYWxpemUoanNvbklucHV0KQogICAgICAgICAgICAgICAgICAgICAgICBpZiAodmFsaWRhdGlvbi5pc0ZhaWx1cmUpIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbGlkYXRpb25NZXNzYWdlID0gIuKdjCBWYWxpZGUgdW0gSlNPTiBjb3JyZXRvIGFudGVzIGRlIGdlcmFyOiAke3ZhbGlkYXRpb24uZXhjZXB0aW9uT3JOdWxsKCk/LmxvY2FsaXplZE1lc3NhZ2V9IgogICAgICAgICAgICAgICAgICAgICAgICAgICAgcmV0dXJuQEJ1dHRvbgogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIHZhbCBpbnRlbnQgPSBJbnRlbnQoY29udGV4dCwgVmlkZW9FeHBvcnRTZXJ2aWNlOjpjbGFzcy5qYXZhKS5hcHBseSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBhY3Rpb24gPSBWaWRlb0V4cG9ydFNlcnZpY2UuQUNUSU9OX1NUQVJUCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBwdXRFeHRyYShWaWRlb0V4cG9ydFNlcnZpY2UuRVhUUkFfSlNPTiwganNvbklucHV0KQogICAgICAgICAgICAgICAgICAgICAgICAgICAgcHV0RXh0cmEoVmlkZW9FeHBvcnRTZXJ2aWNlLkVYVFJBX0FTUEVDVCwgc2VsZWN0ZWRBc3BlY3QubmFtZSkKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHB1dEV4dHJhKFZpZGVvRXhwb3J0U2VydmljZS5FWFRSQV9STVNfVEhSRVNIT0xELCBybXNUaHJlc2hvbGQudG9Eb3VibGUoKSkKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHB1dEV4dHJhKFZpZGVvRXhwb3J0U2VydmljZS5FWFRSQV9RVUlDS19URVNULCBmYWxzZSkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICBjb250ZXh0LnN0YXJ0Rm9yZWdyb3VuZFNlcnZpY2UoaW50ZW50KQogICAgICAgICAgICAgICAgICAgIH0sCiAgICAgICAgICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci53ZWlnaHQoMWYpLAogICAgICAgICAgICAgICAgICAgIGNvbG9ycyA9IEJ1dHRvbkRlZmF1bHRzLmJ1dHRvbkNvbG9ycyhjb250YWluZXJDb2xvciA9IENvbG9yKDB4RkZEOTIzMjMpKQogICAgICAgICAgICAgICAgKSB7CiAgICAgICAgICAgICAgICAgICAgVGV4dCgiR2VyYXIgdsOtZGVvIE1QNCIsIGZvbnRXZWlnaHQgPSBGb250V2VpZ2h0LkJvbGQpCiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgT3V0bGluZWRCdXR0b24oCiAgICAgICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICAgICAgdmFsIGludGVudCA9IEludGVudChjb250ZXh0LCBWaWRlb0V4cG9ydFNlcnZpY2U6OmNsYXNzLmphdmEpLmFwcGx5IHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGFjdGlvbiA9IFZpZGVvRXhwb3J0U2VydmljZS5BQ1RJT05fU1RBUlQKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHB1dEV4dHJhKFZpZGVvRXhwb3J0U2VydmljZS5FWFRSQV9BU1BFQ1QsIHNlbGVjdGVkQXNwZWN0Lm5hbWUpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBwdXRFeHRyYShWaWRlb0V4cG9ydFNlcnZpY2UuRVhUUkFfUk1TX1RIUkVTSE9MRCwgcm1zVGhyZXNob2xkLnRvRG91YmxlKCkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBwdXRFeHRyYShWaWRlb0V4cG9ydFNlcnZpY2UuRVhUUkFfUVVJQ0tfVEVTVCwgdHJ1ZSkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICBjb250ZXh0LnN0YXJ0Rm9yZWdyb3VuZFNlcnZpY2UoaW50ZW50KQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgICAgIFRleHQoIk1vZG8gVGVzdGUgKDEwcykiLCBmb250U2l6ZSA9IDEyLnNwKQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICB3aGVuICh2YWwgc3QgPSBleHBvcnRTdGF0dXMpIHsKICAgICAgICAgICAgICAgIGlzIEV4cG9ydFN0YXR1cy5SdW5uaW5nIC0+IHsKICAgICAgICAgICAgICAgICAgICBTcGFjZXIobW9kaWZpZXIgPSBNb2RpZmllci5oZWlnaHQoMTIuZHApKQogICAgICAgICAgICAgICAgICAgIExpbmVhclByb2dyZXNzSW5kaWNhdG9yKAogICAgICAgICAgICAgICAgICAgICAgICBwcm9ncmVzcyA9IHN0LnByb2dyZXNzUGVyY2VudCAvIDEwMGYsCiAgICAgICAgICAgICAgICAgICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIuZmlsbE1heFdpZHRoKCksCiAgICAgICAgICAgICAgICAgICAgICAgIGNvbG9yID0gQ29sb3IoMHhGRkQ5MjMyMykKICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDYuZHApKQogICAgICAgICAgICAgICAgICAgIFRleHQoIkZhc2UgYXR1YWw6ICR7c3QucGhhc2V9ICgke3N0LnByb2dyZXNzUGVyY2VudH0lKSIsIGNvbG9yID0gQ29sb3IuV2hpdGUsIGZvbnRTaXplID0gMTMuc3ApCiAgICAgICAgICAgICAgICAgICAgVGV4dEJ1dHRvbigKICAgICAgICAgICAgICAgICAgICAgICAgb25DbGljayA9IHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIHZhbCBjYW5jZWxJbnRlbnQgPSBJbnRlbnQoY29udGV4dCwgVmlkZW9FeHBvcnRTZXJ2aWNlOjpjbGFzcy5qYXZhKS5hcHBseSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYWN0aW9uID0gVmlkZW9FeHBvcnRTZXJ2aWNlLkFDVElPTl9DQU5DRUwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRleHQuc3RhcnRTZXJ2aWNlKGNhbmNlbEludGVudCkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgICAgICAgICBUZXh0KCJDYW5jZWxhciBFeHBvcnRhw6fDo28iLCBjb2xvciA9IENvbG9yKDB4RkZFRjUzNTApKQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGlzIEV4cG9ydFN0YXR1cy5Db21wbGV0ZWQgLT4gewogICAgICAgICAgICAgICAgICAgIFNwYWNlcihtb2RpZmllciA9IE1vZGlmaWVyLmhlaWdodCgxMi5kcCkpCiAgICAgICAgICAgICAgICAgICAgVGV4dCgi4pyFIFbDrWRlbyBmaW5hbGl6YWRvIGUgc2Fsdm8gbmEgR2FsZXJpYSAoJHtzdC5kaXNwbGF5UGF0aH0pISIsIGNvbG9yID0gQ29sb3IoMHhGRjY2QkI2QSksIGZvbnRXZWlnaHQgPSBGb250V2VpZ2h0LkJvbGQpCiAgICAgICAgICAgICAgICAgICAgUm93KGhvcml6b250YWxBcnJhbmdlbWVudCA9IEFycmFuZ2VtZW50LnNwYWNlZEJ5KDguZHApKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIEJ1dHRvbihvbkNsaWNrID0gewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdmFsIHNoYXJlSW50ZW50ID0gSW50ZW50KEludGVudC5BQ1RJT05fU0VORCkuYXBwbHkgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHR5cGUgPSAidmlkZW8vbXA0IgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHB1dEV4dHJhKEludGVudC5FWFRSQV9TVFJFQU0sIHN0LmdhbGxlcnlVcmkpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYWRkRmxhZ3MoSW50ZW50LkZMQUdfR1JBTlRfUkVBRF9VUklfUEVSTUlTU0lPTikKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRleHQuc3RhcnRBY3Rpdml0eShJbnRlbnQuY3JlYXRlQ2hvb3NlcihzaGFyZUludGVudCwgIkNvbXBhcnRpbGhhciBSZXBvcnRhZ2VtIE1QNCIpKQogICAgICAgICAgICAgICAgICAgICAgICB9KSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBUZXh0KCJDb21wYXJ0aWxoYXIgTVA0IikKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgICAgICBPdXRsaW5lZEJ1dHRvbihvbkNsaWNrID0gewogICAgICAgICAgICAgICAgICAgICAgICAgICAgdmFsIHZpZXdJbnRlbnQgPSBJbnRlbnQoSW50ZW50LkFDVElPTl9WSUVXKS5hcHBseSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgc2V0RGF0YUFuZFR5cGUoc3QuZ2FsbGVyeVVyaSwgInZpZGVvL21wNCIpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgYWRkRmxhZ3MoSW50ZW50LkZMQUdfR1JBTlRfUkVBRF9VUklfUEVSTUlTU0lPTikKICAgICAgICAgICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNvbnRleHQuc3RhcnRBY3Rpdml0eSh2aWV3SW50ZW50KQogICAgICAgICAgICAgICAgICAgICAgICB9KSB7CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBUZXh0KCJBYnJpciBWw61kZW8iKQogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgaXMgRXhwb3J0U3RhdHVzLkZhaWxlZCAtPiB7CiAgICAgICAgICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDEyLmRwKSkKICAgICAgICAgICAgICAgICAgICBUZXh0KCLinYwgRXJybyBlbSBbJHtzdC5leGFjdFBoYXNlfV06ICR7c3QuZGV0YWlsc30iLCBjb2xvciA9IENvbG9yKDB4RkZFRjUzNTApLCBmb250U2l6ZSA9IDEzLnNwKQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgRXhwb3J0U3RhdHVzLklkbGUgLT4ge30KICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgU3RlcENhcmQodGl0bGUgPSAiRVRBUEEgNCDigKIgVm96IEZhYmVyIGUgQXZhdGFyIEFsaW5oYWRvIikgewogICAgICAgICAgICB2YWwgb2ZmbGluZVJlYWR5ID0gcmVtZW1iZXIgeyBQaXBlclR0c0VuZ2luZShjb250ZXh0KS5pc09mZmxpbmVGYWJlck1vZGVsSW5zdGFsbGVkKCkgfQogICAgICAgICAgICBUZXh0KCLigKIgVm96IEZhYmVyIC0gUG9ydHVndcOqcyBCcmFzaWxlaXJvIChwdF9CUi1mYWJlci1tZWRpdW0ub25ueCkiLCBjb2xvciA9IENvbG9yLldoaXRlLCBmb250U2l6ZSA9IDEzLnNwKQogICAgICAgICAgICBUZXh0KCLigKIgTW90b3IgUGlwZXIgaW50ZWdyYWRvIHwgVmVsb2NpZGFkZSAwLjk1IChGYWxhIHBhdXNhZGEgZSBlbG9xdWVudGUpIiwgY29sb3IgPSBDb2xvcigweEZGQjhDMkQ0KSwgZm9udFNpemUgPSAxMy5zcCkKICAgICAgICAgICAgVGV4dCgKICAgICAgICAgICAgICAgIHRleHQgPSBpZiAob2ZmbGluZVJlYWR5KSAi4oCiIFN0YXR1cyBkYSBTw61udGVzZTogMTAwJSBPZmZsaW5lIG5vIERpc3Bvc2l0aXZvIChPTk5YIE5ESykiCiAgICAgICAgICAgICAgICAgICAgICAgZWxzZSAi4oCiIFN0YXR1cyBkYSBTw61udGVzZTogQXJxdWl0ZXR1cmEgSMOtYnJpZGEgQXRpdmEiLAogICAgICAgICAgICAgICAgY29sb3IgPSBDb2xvcigweEZGODFDNzg0KSwKICAgICAgICAgICAgICAgIGZvbnRTaXplID0gMTIuc3AKICAgICAgICAgICAgKQogICAgICAgICAgICBUZXh0KCLigKIgQXZhdGFyIGRlIHJlcG9ydGFnZW0gY2VudHJhbGl6YWRvIChFc2NhbGEgNjAlIGFudGktc29icmVwb3Npw6fDo28pIiwgY29sb3IgPSBDb2xvcigweEZGQjhDMkQ0KSwgZm9udFNpemUgPSAxMy5zcCkKICAgICAgICAgICAgVGV4dCgi4oCiIFRyw6pzIGVzdGFkb3MgZGUgYm9jYSBhbGluaGFkb3MgfCBCb2NhIGZlY2hhZGEgZHVyYW50ZSBwYXVzYXMiLCBjb2xvciA9IENvbG9yKDB4RkZCOEMyRDQpLCBmb250U2l6ZSA9IDEzLnNwKQoKICAgICAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDguZHApKQogICAgICAgICAgICBUZXh0KCJMaW1pYXIgUk1TIGRlIFBhdXNhIFZvY2FsOiAke3Jtc1RocmVzaG9sZC50b0ludCgpfSAoUGFkcsOjbzogNTIwIFBDTSAxNi1iaXQpIiwgY29sb3IgPSBDb2xvci5XaGl0ZSwgZm9udFNpemUgPSAxMi5zcCkKICAgICAgICAgICAgU2xpZGVyKAogICAgICAgICAgICAgICAgdmFsdWUgPSBybXNUaHJlc2hvbGQsCiAgICAgICAgICAgICAgICBvblZhbHVlQ2hhbmdlID0geyBybXNUaHJlc2hvbGQgPSBpdCB9LAogICAgICAgICAgICAgICAgdmFsdWVSYW5nZSA9IDIwMGYuLjEyMDBmCiAgICAgICAgICAgICkKCiAgICAgICAgICAgIFJvdygKICAgICAgICAgICAgICAgIGhvcml6b250YWxBcnJhbmdlbWVudCA9IEFycmFuZ2VtZW50LlNwYWNlRXZlbmx5LAogICAgICAgICAgICAgICAgbW9kaWZpZXIgPSBNb2RpZmllci5maWxsTWF4V2lkdGgoKS5wYWRkaW5nKHRvcCA9IDguZHApCiAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgQXZhdGFyUHJldmlld0l0ZW0oUi5kcmF3YWJsZS5yZXBvcnRlcl9jbG9zZWQsICJDbG9zZWQgKFBhdXNhKSIpCiAgICAgICAgICAgICAgICBBdmF0YXJQcmV2aWV3SXRlbShSLmRyYXdhYmxlLnJlcG9ydGVyX29wZW4sICJPcGVuIChGYWxhKSIpCiAgICAgICAgICAgICAgICBBdmF0YXJQcmV2aWV3SXRlbShSLmRyYXdhYmxlLnJlcG9ydGVyX28sICJGb3JtYXRvIE8iKQogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQp9CgpAQ29tcG9zYWJsZQpmdW4gU3RlcENhcmQodGl0bGU6IFN0cmluZywgY29udGVudDogQENvbXBvc2FibGUgQ29sdW1uU2NvcGUuKCkgLT4gVW5pdCkgewogICAgQ29sdW1uKAogICAgICAgIG1vZGlmaWVyID0gTW9kaWZpZXIKICAgICAgICAgICAgLmZpbGxNYXhXaWR0aCgpCiAgICAgICAgICAgIC5iYWNrZ3JvdW5kKENvbG9yKDB4RkYxNTFBMjQpLCBSb3VuZGVkQ29ybmVyU2hhcGUoMTAuZHApKQogICAgICAgICAgICAuYm9yZGVyKDEuZHAsIENvbG9yKDB4RkYyNjMwNDIpLCBSb3VuZGVkQ29ybmVyU2hhcGUoMTAuZHApKQogICAgICAgICAgICAucGFkZGluZygxNC5kcCkKICAgICkgewogICAgICAgIFRleHQoCiAgICAgICAgICAgIHRleHQgPSB0aXRsZSwKICAgICAgICAgICAgY29sb3IgPSBDb2xvcigweEZGRDkyMzIzKSwKICAgICAgICAgICAgZm9udFdlaWdodCA9IEZvbnRXZWlnaHQuQm9sZCwKICAgICAgICAgICAgZm9udFNpemUgPSAxNC5zcAogICAgICAgICkKICAgICAgICBTcGFjZXIobW9kaWZpZXIgPSBNb2RpZmllci5oZWlnaHQoMTAuZHApKQogICAgICAgIGNvbnRlbnQoKQogICAgfQp9CgpAQ29tcG9zYWJsZQpmdW4gQXZhdGFyUHJldmlld0l0ZW0ocmVzSWQ6IEludCwgbGFiZWw6IFN0cmluZykgewogICAgQ29sdW1uKGhvcml6b250YWxBbGlnbm1lbnQgPSBBbGlnbm1lbnQuQ2VudGVySG9yaXpvbnRhbGx5KSB7CiAgICAgICAgSW1hZ2UoCiAgICAgICAgICAgIHBhaW50ZXIgPSBwYWludGVyUmVzb3VyY2UoaWQgPSByZXNJZCksCiAgICAgICAgICAgIGNvbnRlbnREZXNjcmlwdGlvbiA9IGxhYmVsLAogICAgICAgICAgICBtb2RpZmllciA9IE1vZGlmaWVyCiAgICAgICAgICAgICAgICAuc2l6ZSg4MC5kcCkKICAgICAgICAgICAgICAgIC5ib3JkZXIoMS5kcCwgQ29sb3IoMHhGRjM3NDc0RiksIFJvdW5kZWRDb3JuZXJTaGFwZSg2LmRwKSkKICAgICAgICApCiAgICAgICAgU3BhY2VyKG1vZGlmaWVyID0gTW9kaWZpZXIuaGVpZ2h0KDQuZHApKQogICAgICAgIFRleHQobGFiZWwsIGNvbG9yID0gQ29sb3IoMHhGRkIwQkVDNSksIGZvbnRTaXplID0gMTEuc3ApCiAgICB9Cn0K" | base64 -d > app/src/main/java/com/jornalforge/app/MainActivity.kt
+          cat << 'EOF' > app/src/main/java/com/jornalforge/app/MainActivity.kt
+          @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+          package com.jornalforge.app
+
+          import android.content.ClipData
+          import android.content.ClipboardManager
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Bundle
+          import android.widget.Toast
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.rememberLauncherForActivityResult
+          import androidx.activity.compose.setContent
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.res.painterResource
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.jornalforge.app.audio.PiperTtsEngine
+          import com.jornalforge.app.model.ScriptParser
+          import com.jornalforge.app.model.VideoAspect
+          import com.jornalforge.app.service.ExportStatus
+          import com.jornalforge.app.service.VideoExportService
+          import java.io.BufferedReader
+          import java.io.InputStreamReader
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContent {
+                      MaterialTheme(
+                          colorScheme = darkColorScheme(
+                              primary = Color(0xFFD92323),
+                              onPrimary = Color.White,
+                              background = Color(0xFF0B0E14),
+                              surface = Color(0xFF151A24),
+                              onSurface = Color(0xFFECEFF4)
+                          )
+                      ) {
+                          JornalForgeScreen()
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun JornalForgeScreen() {
+              val context = LocalContext.current
+              val scrollState = rememberScrollState()
+              val exportStatus by VideoExportService.statusFlow.collectAsState()
+
+              var themeText by remember { mutableStateOf("") }
+              var selectedDuration by remember { mutableStateOf(6) }
+              var sourceBaseText by remember { mutableStateOf("") }
+
+              var jsonInput by remember { mutableStateOf("") }
+              var validationMessage by remember { mutableStateOf("Aguardando colagem ou importação do JSON.") }
+              var isJsonValid by remember { mutableStateOf(false) }
+
+              var selectedAspect by remember { mutableStateOf(VideoAspect.HORIZONTAL_16_9) }
+              var rmsThreshold by remember { mutableStateOf(520f) }
+
+              val filePickerLauncher = rememberLauncherForActivityResult(
+                  contract = ActivityResultContracts.OpenDocument()
+              ) { uri: Uri? ->
+                  uri?.let {
+                      try {
+                          context.contentResolver.openInputStream(it)?.use { stream ->
+                              val content = BufferedReader(InputStreamReader(stream)).readText()
+                              jsonInput = content
+                              val res = ScriptParser.validateAndNormalize(content)
+                              res.onSuccess { script ->
+                                  isJsonValid = true
+                                  validationMessage = "JSON Válido! Título: '${script.videoTitle}' | ${script.scenes.size} cenas normalizadas."
+                              }.onFailure { err ->
+                                  isJsonValid = false
+                                  validationMessage = "Erro: ${err.localizedMessage}"
+                              }
+                          }
+                      } catch (e: Exception) {
+                          validationMessage = "Erro ao ler arquivo: ${e.localizedMessage}"
+                      }
+                  }
+              }
+
+              Column(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .background(Color(0xFF0B0E14))
+                      .verticalScroll(scrollState)
+                      .padding(16.dp),
+                  verticalArrangement = Arrangement.spacedBy(16.dp)
+              ) {
+                  Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      modifier = Modifier.fillMaxWidth()
+                  ) {
+                      Box(
+                          modifier = Modifier
+                              .width(6.dp)
+                              .height(34.dp)
+                              .background(Color(0xFFD92323))
+                      )
+                      Spacer(modifier = Modifier.width(10.dp))
+                      Column {
+                          Text(
+                              text = "JORNALFORGE ANDROID",
+                              color = Color.White,
+                              fontSize = 22.sp,
+                              fontWeight = FontWeight.ExtraBold
+                          )
+                          Text(
+                              text = "Gerador Jornalístico • Voz Faber PT-BR • Exportação MP4 Única",
+                              color = Color(0xFF9AA5B8),
+                              fontSize = 12.sp
+                          )
+                      }
+                  }
+
+                  StepCard(title = "ETAPA 1 • Fonte e Configuração") {
+                      OutlinedTextField(
+                          value = themeText,
+                          onValueChange = { themeText = it },
+                          label = { Text("Tema (Ex: O verdadeiro interesse por trás de uma decisão)") },
+                          modifier = Modifier.fillMaxWidth(),
+                          singleLine = true
+                      )
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Text("Duração aproximada:", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+                      Row(
+                          horizontalArrangement = Arrangement.spacedBy(6.dp),
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          listOf(1, 4, 6, 8, 10).forEach { min ->
+                              val labelText = if (min == 1) "≤ 57s" else "$min min"
+                              FilterChip(
+                                  selected = selectedDuration == min,
+                                  onClick = { selectedDuration = min },
+                                  label = { Text(labelText, fontSize = 12.sp) }
+                              )
+                          }
+                      }
+
+                      OutlinedTextField(
+                          value = sourceBaseText,
+                          onValueChange = { sourceBaseText = it },
+                          label = { Text("Fonte-base (Artigo, transcrição, resumo ou contexto)") },
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(130.dp)
+                      )
+
+                      if (sourceBaseText.trim().startsWith("http://") || sourceBaseText.trim().startsWith("https://")) {
+                          Text(
+                              text = "⚠️ Você colou um link. Para máxima fidelidade jornalística, forneça também a transcrição ou resumo do conteúdo-base.",
+                              color = Color(0xFFFFB74D),
+                              fontSize = 12.sp,
+                              modifier = Modifier.padding(top = 4.dp)
+                          )
+                      }
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Button(
+                          onClick = {
+                              if (themeText.isBlank() || sourceBaseText.isBlank()) {
+                                  Toast.makeText(context, "Preencha o tema e a fonte-base.", Toast.LENGTH_SHORT).show()
+                              } else {
+                                  val prompt = ScriptParser.buildJournalisticPrompt(themeText, selectedDuration, sourceBaseText)
+                                  val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                  clipboard.setPrimaryClip(ClipData.newPlainText("Prompt JornalForge", prompt))
+                                  Toast.makeText(context, "Prompt jornalístico gerado e copiado!", Toast.LENGTH_LONG).show()
+                              }
+                          },
+                          modifier = Modifier.fillMaxWidth(),
+                          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD92323))
+                      ) {
+                          Text("Gerar e copiar prompt", fontWeight = FontWeight.Bold)
+                      }
+                  }
+
+                  StepCard(title = "ETAPA 2 • Importação e Validação do JSON") {
+                      OutlinedTextField(
+                          value = jsonInput,
+                          onValueChange = {
+                              jsonInput = it
+                              isJsonValid = false
+                          },
+                          label = { Text("Cole aqui o roteiro JSON retornado pela IA") },
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(150.dp)
+                      )
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Row(
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          OutlinedButton(
+                              onClick = {
+                                  val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                  val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                                  if (clipText.isNotEmpty()) {
+                                      jsonInput = clipText
+                                  }
+                              },
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text("Colar Área Transf.", fontSize = 12.sp)
+                          }
+
+                          OutlinedButton(
+                              onClick = {
+                                  filePickerLauncher.launch(arrayOf("application/json", "text/plain"))
+                              },
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              Text("Importar .json/.txt", fontSize = 12.sp)
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Button(
+                          onClick = {
+                              val result = ScriptParser.validateAndNormalize(jsonInput)
+                              result.onSuccess { script ->
+                                  isJsonValid = true
+                                  validationMessage = "✅ Estrutura válida! Título: \"${script.videoTitle}\" | ${script.scenes.size} cenas prontas."
+                              }.onFailure { err ->
+                                  isJsonValid = false
+                                  validationMessage = "❌ ${err.localizedMessage}"
+                              }
+                          },
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          Text("Validar estrutura", fontWeight = FontWeight.Bold)
+                      }
+
+                      Spacer(modifier = Modifier.height(6.dp))
+                      Text(
+                          text = validationMessage,
+                          color = if (isJsonValid) Color(0xFF66BB6A) else Color(0xFFFFCA28),
+                          fontSize = 13.sp
+                      )
+                  }
+
+                  StepCard(title = "ETAPA 3 • Formato e Geração de Vídeo Único") {
+                      VideoAspect.values().forEach { aspect ->
+                          Row(
+                              verticalAlignment = Alignment.CenterVertically,
+                              modifier = Modifier.fillMaxWidth()
+                          ) {
+                              RadioButton(
+                                  selected = selectedAspect == aspect,
+                                  onClick = { selectedAspect = aspect }
+                              )
+                              Text(text = aspect.label, color = Color.White, fontSize = 14.sp)
+                          }
+                      }
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Row(
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                          modifier = Modifier.fillMaxWidth()
+                      ) {
+                          Button(
+                              onClick = {
+                                  val validation = ScriptParser.validateAndNormalize(jsonInput)
+                                  if (validation.isFailure) {
+                                      validationMessage = "❌ Valide um JSON correto antes de gerar: ${validation.exceptionOrNull()?.localizedMessage}"
+                                      return@Button
+                                  }
+                                  val intent = Intent(context, VideoExportService::class.java).apply {
+                                      action = VideoExportService.ACTION_START
+                                      putExtra(VideoExportService.EXTRA_JSON, jsonInput)
+                                      putExtra(VideoExportService.EXTRA_ASPECT, selectedAspect.name)
+                                      putExtra(VideoExportService.EXTRA_RMS_THRESHOLD, rmsThreshold.toDouble())
+                                      putExtra(VideoExportService.EXTRA_QUICK_TEST, false)
+                                  }
+                                  context.startForegroundService(intent)
+                              },
+                              modifier = Modifier.weight(1f),
+                              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD92323))
+                          ) {
+                              Text("Gerar vídeo MP4", fontWeight = FontWeight.Bold)
+                          }
+
+                          OutlinedButton(
+                              onClick = {
+                                  val intent = Intent(context, VideoExportService::class.java).apply {
+                                      action = VideoExportService.ACTION_START
+                                      putExtra(VideoExportService.EXTRA_ASPECT, selectedAspect.name)
+                                      putExtra(VideoExportService.EXTRA_RMS_THRESHOLD, rmsThreshold.toDouble())
+                                      putExtra(VideoExportService.EXTRA_QUICK_TEST, true)
+                                  }
+                                  context.startForegroundService(intent)
+                              }
+                          ) {
+                              Text("Modo Teste (10s)", fontSize = 12.sp)
+                          }
+                      }
+
+                      when (val st = exportStatus) {
+                          is ExportStatus.Running -> {
+                              Spacer(modifier = Modifier.height(12.dp))
+                              LinearProgressIndicator(
+                                  progress = st.progressPercent / 100f,
+                                  modifier = Modifier.fillMaxWidth(),
+                                  color = Color(0xFFD92323)
+                              )
+                              Spacer(modifier = Modifier.height(6.dp))
+                              Text("Fase atual: ${st.phase} (${st.progressPercent}%)", color = Color.White, fontSize = 13.sp)
+                              TextButton(
+                                  onClick = {
+                                      val cancelIntent = Intent(context, VideoExportService::class.java).apply {
+                                          action = VideoExportService.ACTION_CANCEL
+                                      }
+                                      context.startService(cancelIntent)
+                                  }
+                              ) {
+                                  Text("Cancelar Exportação", color = Color(0xFFEF5350))
+                              }
+                          }
+                          is ExportStatus.Completed -> {
+                              Spacer(modifier = Modifier.height(12.dp))
+                              Text("✅ Vídeo finalizado e salvo na Galeria (${st.displayPath})!", color = Color(0xFF66BB6A), fontWeight = FontWeight.Bold)
+                              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  Button(onClick = {
+                                      val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                          type = "video/mp4"
+                                          putExtra(Intent.EXTRA_STREAM, st.galleryUri)
+                                          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                      }
+                                      context.startActivity(Intent.createChooser(shareIntent, "Compartilhar Reportagem MP4"))
+                                  }) {
+                                      Text("Compartilhar MP4")
+                                  }
+                                  OutlinedButton(onClick = {
+                                      val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                                          setDataAndType(st.galleryUri, "video/mp4")
+                                          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                      }
+                                      context.startActivity(viewIntent)
+                                  }) {
+                                      Text("Abrir Vídeo")
+                                  }
+                              }
+                          }
+                          is ExportStatus.Failed -> {
+                              Spacer(modifier = Modifier.height(12.dp))
+                              Text("❌ Erro em [${st.exactPhase}]: ${st.details}", color = Color(0xFFEF5350), fontSize = 13.sp)
+                          }
+                          ExportStatus.Idle -> {}
+                      }
+                  }
+
+                  StepCard(title = "ETAPA 4 • Voz Faber e Avatar Retro 32-bit / N64") {
+                      val offlineReady = remember { PiperTtsEngine(context).isOfflineFaberModelInstalled() }
+                      Text("• Voz Faber - Português Brasileiro (pt_BR-faber-medium.onnx)", color = Color.White, fontSize = 13.sp)
+                      Text("• Motor Piper integrado | Velocidade 0.95 (Fala pausada e eloquente)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+                      Text(
+                          text = if (offlineReady) "• Status da Síntese: 100% Offline no Dispositivo (ONNX NDK)"
+                                 else "• Status da Síntese: Arquitetura Híbrida Ativa",
+                          color = Color(0xFF81C784),
+                          fontSize = 12.sp
+                      )
+                      Text("• Estilo Visual: Retro 32-bit / N64 Low-Poly 3D (4 Expressões A, E, I, O)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Text("Limiar RMS de Pausa Vocal: ${rmsThreshold.toInt()} (Padrão: 520 PCM 16-bit)", color = Color.White, fontSize = 12.sp)
+                      Slider(
+                          value = rmsThreshold,
+                          onValueChange = { rmsThreshold = it },
+                          valueRange = 200f..1200f
+                      )
+
+                      Row(
+                          horizontalArrangement = Arrangement.SpaceEvenly,
+                          modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                      ) {
+                          AvatarPreviewItem(R.drawable.reporter_a, "Fonema A")
+                          AvatarPreviewItem(R.drawable.reporter_open, "Fonema E")
+                          AvatarPreviewItem(R.drawable.reporter_closed, "Fonema I")
+                          AvatarPreviewItem(R.drawable.reporter_o, "Fonema O")
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun StepCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+              Column(
+                  modifier = Modifier
+                      .fillMaxWidth()
+                      .background(Color(0xFF151A24), RoundedCornerShape(10.dp))
+                      .border(1.dp, Color(0xFF263042), RoundedCornerShape(10.dp))
+                      .padding(14.dp)
+              ) {
+                  Text(
+                      text = title,
+                      color = Color(0xFFD92323),
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 14.sp
+                  )
+                  Spacer(modifier = Modifier.height(10.dp))
+                  content()
+              }
+          }
+
+          @Composable
+          fun AvatarPreviewItem(resId: Int, label: String) {
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                  Image(
+                      painter = painterResource(id = resId),
+                      contentDescription = label,
+                      modifier = Modifier
+                          .size(72.dp)
+                          .border(1.dp, Color(0xFF37474F), RoundedCornerShape(6.dp))
+                  )
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(label, color = Color(0xFFB0BEC5), fontSize = 11.sp)
+              }
+          }
+          EOF
+
           echo "cGFja2FnZSBjb20uam9ybmFsZm9yZ2UuYXBwLnNlcnZpY2UKCmltcG9ydCBhbmRyb2lkLmFwcC4qCmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuQ29udGVudFZhbHVlcwppbXBvcnQgYW5kcm9pZC5jb250ZW50LkNvbnRleHQKaW1wb3J0IGFuZHJvaWQuY29udGVudC5JbnRlbnQKaW1wb3J0IGFuZHJvaWQubmV0LlVyaQppbXBvcnQgYW5kcm9pZC5vcy5CdWlsZAppbXBvcnQgYW5kcm9pZC5vcy5FbnZpcm9ubWVudAppbXBvcnQgYW5kcm9pZC5vcy5JQmluZGVyCmltcG9ydCBhbmRyb2lkLm9zLlN0YXRGcwppbXBvcnQgYW5kcm9pZC5wcm92aWRlci5NZWRpYVN0b3JlCmltcG9ydCBhbmRyb2lkeC5jb3JlLmFwcC5Ob3RpZmljYXRpb25Db21wYXQKaW1wb3J0IGNvbS5qb3JuYWxmb3JnZS5hcHAuYXVkaW8uTW91dGhTdGF0ZQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5hdWRpby5QaXBlclR0c0VuZ2luZQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5hdWRpby5TY2VuZUF1ZGlvRGF0YQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5tb2RlbC5Ob3JtYWxpemVkU2NyaXB0CmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLm1vZGVsLlNjcmlwdFBhcnNlcgppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5tb2RlbC5WaWRlb0FzcGVjdAppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC52aWRlby5GcmFtZVJlbmRlcmVyCmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLnZpZGVvLlNpbXBsZU1wNE11eGVyCmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuKgppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuTXV0YWJsZVN0YXRlRmxvdwppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuU3RhdGVGbG93CmltcG9ydCBqYXZhLmlvLkZpbGUKaW1wb3J0IGphdmEuaW8uRmlsZUlucHV0U3RyZWFtCgpzZWFsZWQgY2xhc3MgRXhwb3J0U3RhdHVzIHsKICAgIG9iamVjdCBJZGxlIDogRXhwb3J0U3RhdHVzKCkKICAgIGRhdGEgY2xhc3MgUnVubmluZyh2YWwgcGhhc2U6IFN0cmluZywgdmFsIHByb2dyZXNzUGVyY2VudDogSW50KSA6IEV4cG9ydFN0YXR1cygpCiAgICBkYXRhIGNsYXNzIENvbXBsZXRlZCh2YWwgZ2FsbGVyeVVyaTogVXJpLCB2YWwgZGlzcGxheVBhdGg6IFN0cmluZykgOiBFeHBvcnRTdGF0dXMoKQogICAgZGF0YSBjbGFzcyBGYWlsZWQodmFsIGV4YWN0UGhhc2U6IFN0cmluZywgdmFsIGRldGFpbHM6IFN0cmluZykgOiBFeHBvcnRTdGF0dXMoKQp9CgpjbGFzcyBWaWRlb0V4cG9ydFNlcnZpY2UgOiBTZXJ2aWNlKCkgewoKICAgIGNvbXBhbmlvbiBvYmplY3QgewogICAgICAgIHByaXZhdGUgdmFsIF9zdGF0dXNGbG93ID0gTXV0YWJsZVN0YXRlRmxvdzxFeHBvcnRTdGF0dXM+KEV4cG9ydFN0YXR1cy5JZGxlKQogICAgICAgIHZhbCBzdGF0dXNGbG93OiBTdGF0ZUZsb3c8RXhwb3J0U3RhdHVzPiA9IF9zdGF0dXNGbG93CgogICAgICAgIGNvbnN0IHZhbCBBQ1RJT05fU1RBUlQgPSAiY29tLmpvcm5hbGZvcmdlLmFwcC5TVEFSVF9FWFBPUlQiCiAgICAgICAgY29uc3QgdmFsIEFDVElPTl9DQU5DRUwgPSAiY29tLmpvcm5hbGZvcmdlLmFwcC5DQU5DRUxfRVhQT1JUIgogICAgICAgIGNvbnN0IHZhbCBFWFRSQV9KU09OID0gImV4dHJhX2pzb24iCiAgICAgICAgY29uc3QgdmFsIEVYVFJBX0FTUEVDVCA9ICJleHRyYV9hc3BlY3QiCiAgICAgICAgY29uc3QgdmFsIEVYVFJBX1JNU19USFJFU0hPTEQgPSAiZXh0cmFfcm1zIgogICAgICAgIGNvbnN0IHZhbCBFWFRSQV9RVUlDS19URVNUID0gImV4dHJhX3F1aWNrX3Rlc3QiCiAgICAgICAgcHJpdmF0ZSBjb25zdCB2YWwgQ0hBTk5FTF9JRCA9ICJqb3JuYWxmb3JnZV9leHBvcnRfY2hhbm5lbCIKICAgICAgICBwcml2YXRlIGNvbnN0IHZhbCBOT1RJRl9JRCA9IDEwMDEKICAgIH0KCiAgICBwcml2YXRlIHZhbCBzZXJ2aWNlSm9iID0gU3VwZXJ2aXNvckpvYigpCiAgICBwcml2YXRlIHZhbCBzZXJ2aWNlU2NvcGUgPSBDb3JvdXRpbmVTY29wZShEaXNwYXRjaGVycy5EZWZhdWx0ICsgc2VydmljZUpvYikKICAgIHByaXZhdGUgdmFyIGN1cnJlbnRKb2I6IEpvYj8gPSBudWxsCgogICAgb3ZlcnJpZGUgZnVuIG9uQ3JlYXRlKCkgewogICAgICAgIHN1cGVyLm9uQ3JlYXRlKCkKICAgICAgICBjcmVhdGVOb3RpZmljYXRpb25DaGFubmVsKCkKICAgIH0KCiAgICBvdmVycmlkZSBmdW4gb25TdGFydENvbW1hbmQoaW50ZW50OiBJbnRlbnQ/LCBmbGFnczogSW50LCBzdGFydElkOiBJbnQpOiBJbnQgewogICAgICAgIHdoZW4gKGludGVudD8uYWN0aW9uKSB7CiAgICAgICAgICAgIEFDVElPTl9DQU5DRUwgLT4gewogICAgICAgICAgICAgICAgY3VycmVudEpvYj8uY2FuY2VsKCkKICAgICAgICAgICAgICAgIGNsZWFudXBUZW1wRGlyKCkKICAgICAgICAgICAgICAgIF9zdGF0dXNGbG93LnZhbHVlID0gRXhwb3J0U3RhdHVzLkZhaWxlZCgiRXhwb3J0YcOnw6NvIGNhbmNlbGFkYSBwZWxvIHVzdcOhcmlvIiwgIkFycXVpdm9zIHRlbXBvcsOhcmlvcyByZW1vdmlkb3MuIikKICAgICAgICAgICAgICAgIHN0b3BGb3JlZ3JvdW5kKFNUT1BfRk9SRUdST1VORF9SRU1PVkUpCiAgICAgICAgICAgICAgICBzdG9wU2VsZigpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgQUNUSU9OX1NUQVJUIC0+IHsKICAgICAgICAgICAgICAgIHZhbCByYXdKc29uID0gaW50ZW50LmdldFN0cmluZ0V4dHJhKEVYVFJBX0pTT04pID86ICIiCiAgICAgICAgICAgICAgICB2YWwgYXNwZWN0TmFtZSA9IGludGVudC5nZXRTdHJpbmdFeHRyYShFWFRSQV9BU1BFQ1QpID86IFZpZGVvQXNwZWN0LkhPUklaT05UQUxfMTZfOS5uYW1lCiAgICAgICAgICAgICAgICB2YWwgcm1zVGhyZXNob2xkID0gaW50ZW50LmdldERvdWJsZUV4dHJhKEVYVFJBX1JNU19USFJFU0hPTEQsIFBpcGVyVHRzRW5naW5lLkRFRkFVTFRfUk1TX1RIUkVTSE9MRCkKICAgICAgICAgICAgICAgIHZhbCBpc1F1aWNrVGVzdCA9IGludGVudC5nZXRCb29sZWFuRXh0cmEoRVhUUkFfUVVJQ0tfVEVTVCwgZmFsc2UpCiAgICAgICAgICAgICAgICB2YWwgYXNwZWN0ID0gVmlkZW9Bc3BlY3QudmFsdWVPZihhc3BlY3ROYW1lKQoKICAgICAgICAgICAgICAgIHN0YXJ0Rm9yZWdyb3VuZChOT1RJRl9JRCwgYnVpbGROb3RpZmljYXRpb24oIlByZXBhcmFuZG8gcm90ZWlybyIsIDApKQogICAgICAgICAgICAgICAgY3VycmVudEpvYiA9IHNlcnZpY2VTY29wZS5sYXVuY2ggewogICAgICAgICAgICAgICAgICAgIHJ1blBpcGVsaW5lKHJhd0pzb24sIGFzcGVjdCwgcm1zVGhyZXNob2xkLCBpc1F1aWNrVGVzdCkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICByZXR1cm4gU1RBUlRfTk9UX1NUSUNLWQogICAgfQoKICAgIHByaXZhdGUgc3VzcGVuZCBmdW4gcnVuUGlwZWxpbmUoCiAgICAgICAgcmF3SnNvbjogU3RyaW5nLAogICAgICAgIGFzcGVjdDogVmlkZW9Bc3BlY3QsCiAgICAgICAgcm1zVGhyZXNob2xkOiBEb3VibGUsCiAgICAgICAgaXNRdWlja1Rlc3Q6IEJvb2xlYW4KICAgICkgewogICAgICAgIHZhbCB0ZW1wUm9vdCA9IEZpbGUoY2FjaGVEaXIsICJqb3JuYWxmb3JnZV9qb2IiKQogICAgICAgIHRyeSB7CiAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJQcmVwYXJhbmRvIHJvdGVpcm8iLCA1KQogICAgICAgICAgICB2YWwgc2NyaXB0OiBOb3JtYWxpemVkU2NyaXB0ID0gaWYgKGlzUXVpY2tUZXN0KSB7CiAgICAgICAgICAgICAgICBTY3JpcHRQYXJzZXIuZ2V0UXVpY2tUZXN0U2NyaXB0KCkKICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgIFNjcmlwdFBhcnNlci52YWxpZGF0ZUFuZE5vcm1hbGl6ZShyYXdKc29uKS5nZXRPckVsc2UgeyBlcnIgLT4KICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIG5hIHZhbGlkYcOnw6NvIGRvIHJvdGVpcm8iLCBlcnIubG9jYWxpemVkTWVzc2FnZSA/OiAiSlNPTiBpbnbDoWxpZG8iKQogICAgICAgICAgICAgICAgICAgIHJldHVybgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgc3RhdCA9IFN0YXRGcyhjYWNoZURpci5hYnNvbHV0ZVBhdGgpCiAgICAgICAgICAgIHZhbCBhdmFpbGFibGVNZWdhYnl0ZXMgPSAoc3RhdC5hdmFpbGFibGVCbG9ja3NMb25nICogc3RhdC5ibG9ja1NpemVMb25nKSAvICgxMDI0ICogMTAyNCkKICAgICAgICAgICAgaWYgKGF2YWlsYWJsZU1lZ2FieXRlcyA8IDI1MCkgewogICAgICAgICAgICAgICAgZmFpbEF0KCJGYWx0YSBkZSBlc3Bhw6dvIG5vIGFybWF6ZW5hbWVudG8iLCAiRXNwYcOnbyBkaXNwb27DrXZlbCBpbnN1ZmljaWVudGUgKCRhdmFpbGFibGVNZWdhYnl0ZXMgTUIpLiIpCiAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgfQoKICAgICAgICAgICAgaWYgKHRlbXBSb290LmV4aXN0cygpKSB0ZW1wUm9vdC5kZWxldGVSZWN1cnNpdmVseSgpCiAgICAgICAgICAgIHZhbCB3YXZEaXIgPSBGaWxlKHRlbXBSb290LCAid2F2cyIpLmFwcGx5IHsgbWtkaXJzKCkgfQogICAgICAgICAgICB2YWwgZnJhbWVzRGlyID0gRmlsZSh0ZW1wUm9vdCwgImZyYW1lcyIpLmFwcGx5IHsgbWtkaXJzKCkgfQoKICAgICAgICAgICAgdmFsIHR0c0VuZ2luZSA9IFBpcGVyVHRzRW5naW5lKGFwcGxpY2F0aW9uQ29udGV4dCkKICAgICAgICAgICAgdmFsIHNjZW5lQXVkaW9MaXN0ID0gbXV0YWJsZUxpc3RPZjxTY2VuZUF1ZGlvRGF0YT4oKQogICAgICAgICAgICB2YWwgdG90YWxTY2VuZXMgPSBzY3JpcHQuc2NlbmVzLnNpemUKCiAgICAgICAgICAgIGZvciAoKGluZGV4LCBzY2VuZSkgaW4gc2NyaXB0LnNjZW5lcy53aXRoSW5kZXgoKSkgewogICAgICAgICAgICAgICAgY3VycmVudENvcm91dGluZUNvbnRleHQoKS5lbnN1cmVBY3RpdmUoKQogICAgICAgICAgICAgICAgdmFsIHNjZW5lTnVtID0gaW5kZXggKyAxCiAgICAgICAgICAgICAgICB2YWwgcHJvZ3Jlc3MgPSAxMCArICgoaW5kZXgudG9GbG9hdCgpIC8gdG90YWxTY2VuZXMpICogMjUpLnRvSW50KCkKICAgICAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJHZXJhbmRvIG5hcnJhw6fDo28gRmFiZXIgY2VuYSAkc2NlbmVOdW0gZGUgJHRvdGFsU2NlbmVzIiwgcHJvZ3Jlc3MpCgogICAgICAgICAgICAgICAgdmFsIHdhdkZpbGUgPSBGaWxlKHdhdkRpciwgU3RyaW5nLmZvcm1hdCgic2NlbmVfJTA0ZC53YXYiLCBzY2VuZU51bSkpCiAgICAgICAgICAgICAgICB2YWwgYXVkaW9EYXRhID0gdHJ5IHsKICAgICAgICAgICAgICAgICAgICB0dHNFbmdpbmUuc3ludGhlc2l6ZVNjZW5lVG9XYXYoc2NlbmUubmFycmF0aW9uLCB3YXZGaWxlLCBybXNUaHJlc2hvbGQpCiAgICAgICAgICAgICAgICB9IGNhdGNoIChlOiBFeGNlcHRpb24pIHsKICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIG5hIHPDrW50ZXNlIGRlIHZveiIsICJDZW5hICRzY2VuZU51bTogJHtlLmxvY2FsaXplZE1lc3NhZ2V9IikKICAgICAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICB1cGRhdGVQaGFzZSgiQW5hbGlzYW5kbyBwYXVzYXMgZGEgdm96IiwgcHJvZ3Jlc3MgKyAyKQogICAgICAgICAgICAgICAgc2NlbmVBdWRpb0xpc3QuYWRkKGF1ZGlvRGF0YS5jb3B5KHNjZW5lTnVtYmVyID0gc2NlbmVOdW0pKQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgZnVsbEF1ZGlvV2F2ID0gRmlsZSh0ZW1wUm9vdCwgImZ1bGxfbmFycmF0aW9uLndhdiIpCiAgICAgICAgICAgIFNpbXBsZU1wNE11eGVyLmNvbmNhdGVuYXRlV2F2cyhzY2VuZUF1ZGlvTGlzdC5tYXAgeyBpdC53YXZGaWxlIH0sIGZ1bGxBdWRpb1dhdikKCiAgICAgICAgICAgIHZhbCBmcmFtZVJlbmRlcmVyID0gRnJhbWVSZW5kZXJlcihhcHBsaWNhdGlvbkNvbnRleHQpCiAgICAgICAgICAgIHZhciBnbG9iYWxGcmFtZUluZGV4ID0gMQoKICAgICAgICAgICAgZm9yICgoaW5kZXgsIHNjZW5lKSBpbiBzY3JpcHQuc2NlbmVzLndpdGhJbmRleCgpKSB7CiAgICAgICAgICAgICAgICBjdXJyZW50Q29yb3V0aW5lQ29udGV4dCgpLmVuc3VyZUFjdGl2ZSgpCiAgICAgICAgICAgICAgICB2YWwgc2NlbmVOdW0gPSBpbmRleCArIDEKICAgICAgICAgICAgICAgIHZhbCBhdWRpb0RhdGEgPSBzY2VuZUF1ZGlvTGlzdFtpbmRleF0KICAgICAgICAgICAgICAgIHZhbCBzY2VuZUZyYW1lc0NvdW50ID0gYXVkaW9EYXRhLm1vdXRoVGltZWxpbmU0RnBzLnNpemUuY29lcmNlQXRMZWFzdCgxKQoKICAgICAgICAgICAgICAgIHZhbCBwcm9ncmVzcyA9IDQwICsgKChpbmRleC50b0Zsb2F0KCkgLyB0b3RhbFNjZW5lcykgKiAzNSkudG9JbnQoKQogICAgICAgICAgICAgICAgdXBkYXRlUGhhc2UoIlJlbmRlcml6YW5kbyBhdmF0YXIgZSBsZWdlbmRhcyBjZW5hICRzY2VuZU51bSBkZSAkdG90YWxTY2VuZXMiLCBwcm9ncmVzcykKCiAgICAgICAgICAgICAgICBmb3IgKGYgaW4gMCB1bnRpbCBzY2VuZUZyYW1lc0NvdW50KSB7CiAgICAgICAgICAgICAgICAgICAgY3VycmVudENvcm91dGluZUNvbnRleHQoKS5lbnN1cmVBY3RpdmUoKQogICAgICAgICAgICAgICAgICAgIHZhbCBsb2NhbFRpbWUgPSBmICogMC4yNQogICAgICAgICAgICAgICAgICAgIHZhbCBtb3V0aFN0YXRlOiBNb3V0aFN0YXRlID0gYXVkaW9EYXRhLm1vdXRoVGltZWxpbmU0RnBzLmdldE9yRWxzZShmKSB7IE1vdXRoU3RhdGUuQ0xPU0VEIH0KICAgICAgICAgICAgICAgICAgICB2YWwgZnJhbWVGaWxlID0gRmlsZShmcmFtZXNEaXIsIFN0cmluZy5mb3JtYXQoImZyYW1lXyUwNmQuanBnIiwgZ2xvYmFsRnJhbWVJbmRleCsrKSkKCiAgICAgICAgICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgICAgICAgICAgZnJhbWVSZW5kZXJlci5yZW5kZXJBbmRTYXZlRnJhbWUoCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB2aWRlb1RpdGxlID0gc2NyaXB0LnZpZGVvVGl0bGUsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBzY2VuZSA9IHNjZW5lLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgbG9jYWxUaW1lID0gbG9jYWxUaW1lLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgc2NlbmVEdXJhdGlvbiA9IGF1ZGlvRGF0YS5kdXJhdGlvblNlY29uZHMsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBtb3V0aFN0YXRlID0gbW91dGhTdGF0ZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGFzcGVjdCA9IGFzcGVjdCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIG91dHB1dEZpbGUgPSBmcmFtZUZpbGUKICAgICAgICAgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikgewogICAgICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIGFvIGNyaWFyIGZyYW1lcyIsICJFcnJvIG5hIGNlbmEgJHNjZW5lTnVtOiAke2UubG9jYWxpemVkTWVzc2FnZX0iKQogICAgICAgICAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJDb2RpZmljYW5kbyB2w61kZW8iLCA4MCkKICAgICAgICAgICAgdmFsIGZpbmFsVGVtcE1wNCA9IEZpbGUodGVtcFJvb3QsICJqb3JuYWxmb3JnZV9maW5hbC5tcDQiKQogICAgICAgICAgICB1cGRhdGVQaGFzZSgiQWRpY2lvbmFuZG8gw6F1ZGlvIiwgODYpCgogICAgICAgICAgICBTaW1wbGVNcDRNdXhlci5tdXgoZnJhbWVzRGlyLCBmdWxsQXVkaW9XYXYsIGZpbmFsVGVtcE1wNCwgYXNwZWN0LndpZHRoLCBhc3BlY3QuaGVpZ2h0KQogICAgICAgICAgICBpZiAoIWZpbmFsVGVtcE1wNC5leGlzdHMoKSB8fCBmaW5hbFRlbXBNcDQubGVuZ3RoKCkgPT0gMEwpIHsKICAgICAgICAgICAgICAgIGZhaWxBdCgiRmFsaGEgbm8gY29kaWZpY2Fkb3IgTVA0IiwgIkVycm8gbmEgY29kaWZpY2HDp8OjbyBILjI2NC9BQUMuIikKICAgICAgICAgICAgICAgIHJldHVybgogICAgICAgICAgICB9CgogICAgICAgICAgICB1cGRhdGVQaGFzZSgiU2FsdmFuZG8gbmEgZ2FsZXJpYSIsIDk0KQogICAgICAgICAgICB2YWwgc2F2ZWRVcmkgPSBzYXZlTXA0VG9HYWxsZXJ5KGZpbmFsVGVtcE1wNCwgc2NyaXB0LnZpZGVvVGl0bGUpCiAgICAgICAgICAgIGlmIChzYXZlZFVyaSA9PSBudWxsKSB7CiAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIGFvIHNhbHZhciBuYSBnYWxlcmlhIiwgIk7Do28gZm9pIHBvc3PDrXZlbCBncmF2YXIgbyBhcnF1aXZvIE1QNCBubyBNZWRpYVN0b3JlLiIpCiAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgfQoKICAgICAgICAgICAgdXBkYXRlUGhhc2UoIkxpbXBlemEgZG9zIGFycXVpdm9zIHRlbXBvcsOhcmlvcyIsIDk4KQogICAgICAgICAgICBjbGVhbnVwVGVtcERpcigpCgogICAgICAgICAgICB1cGRhdGVQaGFzZSgiVsOtZGVvIGZpbmFsaXphZG8iLCAxMDApCiAgICAgICAgICAgIF9zdGF0dXNGbG93LnZhbHVlID0gRXhwb3J0U3RhdHVzLkNvbXBsZXRlZChzYXZlZFVyaSwgIk1vdmllcy9Kb3JuYWxGb3JnZSIpCiAgICAgICAgICAgIHN0b3BGb3JlZ3JvdW5kKFNUT1BfRk9SRUdST1VORF9SRU1PVkUpCiAgICAgICAgICAgIHN0b3BTZWxmKCkKCiAgICAgICAgfSBjYXRjaCAoZTogQ2FuY2VsbGF0aW9uRXhjZXB0aW9uKSB7CiAgICAgICAgICAgIGNsZWFudXBUZW1wRGlyKCkKICAgICAgICB9IGNhdGNoIChlOiBFeGNlcHRpb24pIHsKICAgICAgICAgICAgZmFpbEF0KCJGYWxoYSBpbmVzcGVyYWRhIiwgZS5sb2NhbGl6ZWRNZXNzYWdlID86ICJFcnJvIGRlc2NvbmhlY2lkbyIpCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIHNhdmVNcDRUb0dhbGxlcnkoc291cmNlTXA0OiBGaWxlLCB0aXRsZTogU3RyaW5nKTogVXJpPyB7CiAgICAgICAgcmV0dXJuIHRyeSB7CiAgICAgICAgICAgIHZhbCBjbGVhblRpdGxlID0gdGl0bGUucmVwbGFjZShSZWdleCgiW15hLXpBLVowLTlfLV0iKSwgIl8iKS50YWtlKDQwKQogICAgICAgICAgICB2YWwgZmlsZU5hbWUgPSAiSm9ybmFsRm9yZ2VfJHtjbGVhblRpdGxlfV8ke1N5c3RlbS5jdXJyZW50VGltZU1pbGxpcygpfS5tcDQiCiAgICAgICAgICAgIHZhbCB2YWx1ZXMgPSBDb250ZW50VmFsdWVzKCkuYXBwbHkgewogICAgICAgICAgICAgICAgcHV0KE1lZGlhU3RvcmUuVmlkZW8uTWVkaWEuRElTUExBWV9OQU1FLCBmaWxlTmFtZSkKICAgICAgICAgICAgICAgIHB1dChNZWRpYVN0b3JlLlZpZGVvLk1lZGlhLk1JTUVfVFlQRSwgInZpZGVvL21wNCIpCiAgICAgICAgICAgICAgICBwdXQoTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5SRUxBVElWRV9QQVRILCBFbnZpcm9ubWVudC5ESVJFQ1RPUllfTU9WSUVTICsgIi9Kb3JuYWxGb3JnZSIpCiAgICAgICAgICAgICAgICBwdXQoTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5JU19QRU5ESU5HLCAxKQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgcmVzb2x2ZXIgPSBhcHBsaWNhdGlvbkNvbnRleHQuY29udGVudFJlc29sdmVyCiAgICAgICAgICAgIHZhbCBjb2xsZWN0aW9uID0gTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5nZXRDb250ZW50VXJpKE1lZGlhU3RvcmUuVk9MVU1FX0VYVEVSTkFMX1BSSU1BUlkpCiAgICAgICAgICAgIHZhbCBpdGVtVXJpID0gcmVzb2x2ZXIuaW5zZXJ0KGNvbGxlY3Rpb24sIHZhbHVlcykgPzogcmV0dXJuIG51bGwKCiAgICAgICAgICAgIHJlc29sdmVyLm9wZW5PdXRwdXRTdHJlYW0oaXRlbVVyaSk/LnVzZSB7IG91dFN0cmVhbSAtPgogICAgICAgICAgICAgICAgRmlsZUlucHV0U3RyZWFtKHNvdXJjZU1wNCkudXNlIHsgaW5TdHJlYW0gLT4KICAgICAgICAgICAgICAgICAgICBpblN0cmVhbS5jb3B5VG8ob3V0U3RyZWFtKQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWx1ZXMuY2xlYXIoKQogICAgICAgICAgICB2YWx1ZXMucHV0KE1lZGlhU3RvcmUuVmlkZW8uTWVkaWEuSVNfUEVORElORywgMCkKICAgICAgICAgICAgcmVzb2x2ZXIudXBkYXRlKGl0ZW1VcmksIHZhbHVlcywgbnVsbCwgbnVsbCkKICAgICAgICAgICAgaXRlbVVyaQogICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikgewogICAgICAgICAgICBudWxsCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIGNsZWFudXBUZW1wRGlyKCkgewogICAgICAgIHRyeSB7CiAgICAgICAgICAgIHZhbCB0ZW1wUm9vdCA9IEZpbGUoY2FjaGVEaXIsICJqb3JuYWxmb3JnZV9qb2IiKQogICAgICAgICAgICBpZiAodGVtcFJvb3QuZXhpc3RzKCkpIHRlbXBSb290LmRlbGV0ZVJlY3Vyc2l2ZWx5KCkKICAgICAgICB9IGNhdGNoIChfOiBFeGNlcHRpb24pIHt9CiAgICB9CgogICAgcHJpdmF0ZSBmdW4gdXBkYXRlUGhhc2UocGhhc2U6IFN0cmluZywgcGVyY2VudDogSW50KSB7CiAgICAgICAgX3N0YXR1c0Zsb3cudmFsdWUgPSBFeHBvcnRTdGF0dXMuUnVubmluZyhwaGFzZSwgcGVyY2VudCkKICAgICAgICB2YWwgbm0gPSBnZXRTeXN0ZW1TZXJ2aWNlKENvbnRleHQuTk9USUZJQ0FUSU9OX1NFUlZJQ0UpIGFzIE5vdGlmaWNhdGlvbk1hbmFnZXIKICAgICAgICBubS5ub3RpZnkoTk9USUZfSUQsIGJ1aWxkTm90aWZpY2F0aW9uKHBoYXNlLCBwZXJjZW50KSkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBmYWlsQXQoZXhhY3RQaGFzZTogU3RyaW5nLCBkZXRhaWxzOiBTdHJpbmcpIHsKICAgICAgICBjbGVhbnVwVGVtcERpcigpCiAgICAgICAgX3N0YXR1c0Zsb3cudmFsdWUgPSBFeHBvcnRTdGF0dXMuRmFpbGVkKGV4YWN0UGhhc2UsIGRldGFpbHMpCiAgICAgICAgc3RvcEZvcmVncm91bmQoU1RPUF9GT1JFR1JPVU5EX1JFTU9WRSkKICAgICAgICBzdG9wU2VsZigpCiAgICB9CgogICAgcHJpdmF0ZSBmdW4gYnVpbGROb3RpZmljYXRpb24ocGhhc2U6IFN0cmluZywgcGVyY2VudDogSW50KTogTm90aWZpY2F0aW9uIHsKICAgICAgICByZXR1cm4gTm90aWZpY2F0aW9uQ29tcGF0LkJ1aWxkZXIodGhpcywgQ0hBTk5FTF9JRCkKICAgICAgICAgICAgLnNldENvbnRlbnRUaXRsZSgiSm9ybmFsRm9yZ2Ug4oCiIFByb2R1w6fDo28gZGUgVsOtZGVvIikKICAgICAgICAgICAgLnNldENvbnRlbnRUZXh0KCIkcGhhc2UgKCRwZXJjZW50JSkiKQogICAgICAgICAgICAuc2V0U21hbGxJY29uKGFuZHJvaWQuUi5kcmF3YWJsZS5pY19tZWRpYV9wbGF5KQogICAgICAgICAgICAuc2V0T25nb2luZyh0cnVlKQogICAgICAgICAgICAuc2V0UHJvZ3Jlc3MoMTAwLCBwZXJjZW50LCBmYWxzZSkKICAgICAgICAgICAgLmJ1aWxkKCkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBjcmVhdGVOb3RpZmljYXRpb25DaGFubmVsKCkgewogICAgICAgIGlmIChCdWlsZC5WRVJTSU9OLlNES19JTlQgPj0gQnVpbGQuVkVSU0lPTl9DT0RFUy5PKSB7CiAgICAgICAgICAgIHZhbCBjaGFubmVsID0gTm90aWZpY2F0aW9uQ2hhbm5lbCgKICAgICAgICAgICAgICAgIENIQU5ORUxfSUQsCiAgICAgICAgICAgICAgICAiRXhwb3J0YcOnw6NvIEpvcm5hbEZvcmdlIiwKICAgICAgICAgICAgICAgIE5vdGlmaWNhdGlvbk1hbmFnZXIuSU1QT1JUQU5DRV9MT1cKICAgICAgICAgICAgKQogICAgICAgICAgICB2YWwgbm0gPSBnZXRTeXN0ZW1TZXJ2aWNlKE5vdGlmaWNhdGlvbk1hbmFnZXI6OmNsYXNzLmphdmEpCiAgICAgICAgICAgIG5tLmNyZWF0ZU5vdGlmaWNhdGlvbkNoYW5uZWwoY2hhbm5lbCkKICAgICAgICB9CiAgICB9CgogICAgb3ZlcnJpZGUgZnVuIG9uQmluZChpbnRlbnQ6IEludGVudD8pOiBJQmluZGVyPyA9IG51bGwKfQo=" | base64 -d > app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
 
-          # Atualizar SimpleMp4Muxer.kt usando Image/InputImage da API nativa do MediaCodec para NUNCA inverter R/B (sem efeito azulado)
           cat << 'EOF' > app/src/main/java/com/jornalforge/app/video/SimpleMp4Muxer.kt
           package com.jornalforge.app.video
 
@@ -318,7 +764,6 @@ jobs:
                   muxer.release()
               }
 
-              // Preenche os planos Y, U (Cb) e V (Cr) respeitando exatamente o pixelStride e rowStride de cada hardware Android
               private fun fillYuv420ImageFromBitmap(img: Image, bmp: android.graphics.Bitmap, width: Int, height: Int) {
                   val argb = IntArray(width * height)
                   bmp.getPixels(argb, 0, width, 0, 0, width, height)
@@ -387,146 +832,143 @@ jobs:
           }
           EOF
 
-      - name: Gerar e Substituir Avatar 3D com Tons de Pele Quentes Naturais (Closed, Open, O)
+      - name: Gerar e Substituir Avatar Retro 32-bit N64 Low-Poly (4 Cenas A, E, I, O)
         run: |
           pip install pillow
           python3 -c '
           import glob, os
-          from PIL import Image, ImageDraw, ImageFilter
+          from PIL import Image, ImageDraw
 
           res_dir = "app/src/main/res/drawable"
-          for name in ["reporter_closed", "reporter_open", "reporter_o"]:
+          for name in ["reporter_closed", "reporter_open", "reporter_o", "reporter_a", "reporter_e", "reporter_i", "avatar_grid_2x2"]:
               for f in glob.glob(os.path.join(res_dir, f"{name}.*")):
                   os.remove(f)
 
-          def render_avatar(mouth_mode, out_path):
-              W, H = 600, 600
-              img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
-              draw = ImageDraw.Draw(img)
+          def render_n64_panel(phoneme):
+              # Renderiza em baixa resolucao (150x150) sem anti-aliasing para autentica textura pixelada 32-bit / N64
+              W, H = 150, 150
+              img = Image.new("RGB", (W, H), (255, 255, 255))
+              d = ImageDraw.Draw(img)
 
-              # Sombra suave neutra no fundo branco puro (sem tom azul)
-              shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-              sdraw = ImageDraw.Draw(shadow)
-              sdraw.ellipse([135, 85, 465, 555], fill=(235, 232, 228, 255))
-              shadow = shadow.filter(ImageFilter.GaussianBlur(26))
-              img = Image.alpha_composite(img, shadow)
-              draw = ImageDraw.Draw(img)
+              # --- OMBROS MUSCULOSOS E CAMISA SOCIAL AZUL DE BOTAO (LOW-POLY FACETS) ---
+              # Ombro esquerdo e direito (facetas poligonais azuis)
+              d.polygon([(8, 150), (22, 114), (58, 106), (52, 150)], fill=(34, 88, 168))
+              d.polygon([(142, 150), (128, 114), (92, 106), (98, 150)], fill=(28, 74, 145))
+              # Peitoral central e camisa
+              d.polygon([(52, 150), (58, 106), (92, 106), (98, 150)], fill=(42, 104, 192))
+              # Sombras poligonais nas dobras da camisa
+              d.polygon([(8, 150), (22, 114), (32, 125), (24, 150)], fill=(24, 64, 128))
+              d.polygon([(142, 150), (128, 114), (118, 125), (126, 150)], fill=(20, 56, 114))
 
-              # Terno executivo preto neutro (sem subtom azulado)
-              draw.polygon([(50, 600), (140, 445), (245, 420), (355, 420), (460, 445), (550, 600)], fill=(22, 22, 22))
-              draw.polygon([(80, 600), (155, 455), (250, 430), (350, 430), (445, 455), (520, 600)], fill=(30, 30, 30))
+              # Pescoco musculoso (trapezio largo e pele bronzeada facetada)
+              d.polygon([(46, 112), (56, 84), (75, 84), (75, 118)], fill=(196, 134, 92))
+              d.polygon([(104, 112), (94, 84), (75, 84), (75, 118)], fill=(176, 116, 76))
+              # Sombra sob o queixo
+              d.polygon([(56, 88), (94, 88), (86, 100), (64, 100)], fill=(138, 86, 54))
+              # Abertura V do colarinho
+              d.polygon([(62, 104), (88, 104), (75, 124)], fill=(168, 110, 72))
 
-              # Camisa social branca pura
-              draw.polygon([(235, 420), (365, 420), (325, 585), (275, 585)], fill=(250, 250, 250))
-              # Colarinho
-              draw.polygon([(235, 415), (288, 468), (250, 495), (218, 435)], fill=(255, 255, 255), outline=(222, 220, 218))
-              draw.polygon([(365, 415), (312, 468), (350, 495), (382, 435)], fill=(255, 255, 255), outline=(222, 220, 218))
+              # Colarinho azul com pontas marcadas e botoes brancos pixelados
+              d.polygon([(46, 108), (62, 102), (72, 124), (52, 120)], fill=(52, 122, 214), outline=(22, 58, 112))
+              d.polygon([(104, 108), (88, 102), (78, 124), (98, 120)], fill=(38, 96, 178), outline=(22, 58, 112))
+              # Vista da camisa e botoes
+              d.rectangle([72, 122, 78, 150], fill=(32, 82, 156))
+              d.rectangle([74, 128, 76, 130], fill=(240, 244, 250))
+              d.rectangle([74, 140, 76, 142], fill=(240, 244, 250))
 
-              # Gravata social preta
-              draw.polygon([(284, 462), (316, 462), (322, 495), (278, 495)], fill=(18, 18, 18))
-              draw.polygon([(282, 495), (318, 495), (328, 600), (272, 600)], fill=(25, 25, 25))
+              # --- CABECA E ROSTO LOW-POLY (PELE BRONZEADA / TANNED SKIN) ---
+              # Orelhas poligonais
+              d.polygon([(36, 54), (44, 52), (44, 70), (38, 68)], fill=(184, 122, 82))
+              d.polygon([(114, 54), (106, 52), (106, 70), (112, 68)], fill=(166, 108, 70))
 
-              # Lapelas do terno
-              draw.polygon([(218, 430), (276, 585), (225, 600), (175, 470)], fill=(38, 38, 38))
-              draw.polygon([(382, 430), (324, 585), (375, 600), (425, 470)], fill=(38, 38, 38))
+              # Faceta central da testa
+              d.polygon([(48, 34), (102, 34), (98, 50), (52, 50)], fill=(216, 152, 106))
+              # Facetas laterais da testa/temporas
+              d.polygon([(44, 40), (48, 34), (52, 50), (44, 54)], fill=(194, 132, 90))
+              d.polygon([(106, 40), (102, 34), (98, 50), (106, 54)], fill=(182, 120, 80))
 
-              # Pescoco masculino forte com tom moreno claro quente
-              draw.rectangle([246, 345, 354, 450], fill=(208, 154, 118))
-              neck_sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-              nsdraw = ImageDraw.Draw(neck_sh)
-              nsdraw.ellipse([242, 335, 358, 415], fill=(148, 98, 68, 155))
-              neck_sh = neck_sh.filter(ImageFilter.GaussianBlur(12))
-              img = Image.alpha_composite(img, neck_sh)
-              draw = ImageDraw.Draw(img)
+              # Facetas das bochechas (esquerda iluminada, direita sombreada N64)
+              d.polygon([(44, 54), (68, 50), (66, 76), (46, 74)], fill=(210, 146, 100))
+              d.polygon([(106, 54), (82, 50), (84, 76), (104, 74)], fill=(192, 128, 86))
 
-              # Orelhas
-              draw.ellipse([166, 228, 198, 298], fill=(210, 156, 120), outline=(170, 118, 86), width=2)
-              draw.ellipse([402, 228, 434, 298], fill=(210, 156, 120), outline=(170, 118, 86), width=2)
+              # Mandibula quadrada forte e queixo poligonal
+              d.polygon([(46, 74), (66, 76), (64, 94), (52, 88)], fill=(188, 126, 84))
+              d.polygon([(104, 74), (84, 76), (86, 94), (98, 88)], fill=(172, 112, 74))
+              d.polygon([(66, 76), (84, 76), (86, 94), (75, 97), (64, 94)], fill=(202, 138, 94))
 
-              # Rosto masculino forte e mandibula angular marcada (tom de pele quente natural)
-              face_pts = [
-                  (184, 175), (186, 265), (202, 335),
-                  (256, 386), (300, 394), (344, 386),
-                  (398, 335), (414, 265), (416, 175),
-                  (375, 118), (300, 108), (225, 118)
-              ]
-              draw.polygon(face_pts, fill=(224, 172, 136))
+              # Nariz low-poly em 3 facetas geometricas
+              d.polygon([(72, 48), (78, 48), (77, 68), (73, 68)], fill=(226, 164, 118))
+              d.polygon([(67, 66), (72, 48), (73, 68)], fill=(186, 124, 82))
+              d.polygon([(83, 66), (78, 48), (77, 68)], fill=(168, 108, 70))
+              d.polygon([(67, 66), (83, 66), (78, 71), (72, 71)], fill=(148, 92, 58))
 
-              # Iluminacao 3D nas bochechas, testa e mandibula
-              shade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-              sh_draw = ImageDraw.Draw(shade)
-              sh_draw.ellipse([215, 125, 385, 220], fill=(248, 208, 176, 115))
-              sh_draw.ellipse([200, 230, 275, 300], fill=(244, 200, 168, 85))
-              sh_draw.ellipse([325, 230, 400, 300], fill=(244, 200, 168, 85))
-              sh_draw.polygon([(184, 250), (202, 335), (245, 378), (225, 260)], fill=(168, 116, 84, 120))
-              sh_draw.polygon([(416, 250), (398, 335), (355, 378), (375, 260)], fill=(168, 116, 84, 120))
-              shade = shade.filter(ImageFilter.GaussianBlur(14))
-              img = Image.alpha_composite(img, shade)
+              # --- SOBRANCELHAS GROSSAS E OLHOS 32-BIT ---
+              # Sobrancelhas castanho-escuras grossas e angulares
+              d.polygon([(49, 44), (69, 46), (69, 50), (49, 48)], fill=(42, 26, 16))
+              d.polygon([(101, 44), (81, 46), (81, 50), (101, 48)], fill=(42, 26, 16))
 
-              # Barba curta por fazer (castanho escuro quente, sem cinza/azul)
-              beard = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-              bdraw = ImageDraw.Draw(beard)
-              beard_pts = [
-                  (188, 258), (202, 335), (256, 386), (300, 394),
-                  (344, 386), (398, 335), (412, 258),
-                  (388, 296), (348, 314), (300, 310), (252, 314), (212, 296)
-              ]
-              bdraw.polygon(beard_pts, fill=(54, 36, 26, 120))
-              bdraw.polygon([(252, 312), (300, 304), (348, 312), (356, 332), (300, 326), (244, 332)], fill=(48, 32, 22, 150))
-              bdraw.rectangle([290, 342, 310, 382], fill=(48, 32, 22, 125))
-              beard = beard.filter(ImageFilter.GaussianBlur(4))
-              img = Image.alpha_composite(img, beard)
-              draw = ImageDraw.Draw(img)
+              # Olhos geométricos
+              for cx in [59, 91]:
+                  d.polygon([(cx-8, 53), (cx+8, 53), (cx+6, 58), (cx-6, 58)], fill=(242, 242, 242))
+                  d.rectangle([cx-3, 53, cx+3, 58], fill=(56, 34, 18))
+                  d.rectangle([cx-1, 54, cx+1, 57], fill=(12, 10, 10))
+                  d.point((cx-2, 54), fill=(255, 255, 255))
+                  d.line([(cx-8, 52), (cx+8, 52)], fill=(30, 18, 12), width=1)
 
-              # Nariz masculino definido
-              draw.polygon([(300, 222), (283, 292), (300, 301), (317, 292)], fill=(204, 150, 114))
-              draw.line([(298, 224), (298, 290)], fill=(242, 200, 170), width=4)
-              draw.ellipse([282, 290, 294, 298], fill=(142, 94, 66))
-              draw.ellipse([306, 290, 318, 298], fill=(142, 94, 66))
+              # --- CABELO CASTANHO ESCURO CURTO LOW-POLY ---
+              d.polygon([(42, 44), (45, 24), (60, 15), (90, 15), (105, 24), (108, 44), (101, 34), (88, 29), (62, 29), (49, 34)], fill=(48, 30, 18))
+              # Facetas superiores do cabelo (efeito poligonal N64)
+              d.polygon([(45, 24), (60, 15), (75, 22), (52, 31)], fill=(62, 40, 24))
+              d.polygon([(60, 15), (90, 15), (75, 22)], fill=(54, 34, 20))
+              d.polygon([(90, 15), (105, 24), (98, 31), (75, 22)], fill=(38, 22, 13))
 
-              # Olhos castanho escuro
-              for cx in [248, 352]:
-                  draw.polygon([(cx-26, 232), (cx-10, 222), (cx+12, 222), (cx+26, 232), (cx+12, 241), (cx-12, 241)], fill=(250, 248, 246))
-                  draw.ellipse([cx-11, 221, cx+11, 241], fill=(68, 40, 22))
-                  draw.ellipse([cx-5, 226, cx+5, 236], fill=(16, 10, 8))
-                  draw.ellipse([cx-7, 224, cx-2, 229], fill=(255, 255, 255))
-                  draw.line([(cx-27, 231), (cx-10, 221), (cx+12, 221), (cx+27, 231)], fill=(34, 22, 14), width=3)
+              # --- 4 EXPRESSOES DE BOCA (FONEMAS A, E, I, O) ---
+              if phoneme == "A":
+                  # Top-Left: Fonema A - Boca bem aberta verticalmente mostrando dentes superiores e interior escuro
+                  d.polygon([(64, 74), (86, 74), (84, 90), (66, 90)], fill=(142, 78, 62))
+                  d.rectangle([67, 76, 83, 88], fill=(28, 12, 14))
+                  d.rectangle([68, 76, 82, 79], fill=(242, 242, 238))
+              elif phoneme == "E":
+                  # Top-Right: Fonema E - Boca moderadamente aberta na horizontal com cantos puxados e dentes visiveis
+                  d.polygon([(61, 75), (89, 75), (86, 85), (64, 85)], fill=(142, 78, 62))
+                  d.rectangle([64, 77, 86, 83], fill=(32, 14, 16))
+                  d.rectangle([65, 77, 85, 79], fill=(242, 242, 238))
+                  d.rectangle([67, 82, 83, 83], fill=(225, 225, 220))
+              elif phoneme == "I":
+                  # Bottom-Left: Fonema I - Labios esticados largos com dentes cerrados visiveis
+                  d.polygon([(60, 76), (90, 76), (88, 83), (62, 83)], fill=(142, 78, 62))
+                  d.rectangle([63, 78, 87, 81], fill=(240, 240, 236))
+                  d.line([(63, 79), (87, 79)], fill=(90, 80, 75), width=1)
+              elif phoneme == "O":
+                  # Bottom-Right: Fonema O - Labios arredondados em pequena abertura circular
+                  d.polygon([(68, 74), (82, 74), (85, 81), (82, 88), (68, 88), (65, 81)], fill=(142, 78, 62))
+                  d.polygon([(71, 77), (79, 77), (81, 81), (79, 85), (71, 85), (69, 81)], fill=(26, 10, 12))
 
-              # Sobrancelhas grossas castanho escuro
-              draw.polygon([(214, 212), (235, 202), (278, 210), (275, 219), (236, 212)], fill=(44, 28, 18))
-              draw.polygon([(386, 212), (365, 202), (322, 210), (325, 219), (364, 212)], fill=(44, 28, 18))
+              # Escala para 600x600 usando NEAREST para preservar os pixels nitidos de 32-bit sem anti-aliasing
+              return img.resize((600, 600), Image.Resampling.NEAREST)
 
-              # Cabelo castanho escuro volumoso, ondulado
-              hair_pts = [
-                  (178, 235), (168, 175), (185, 118), (232, 76),
-                  (300, 64), (368, 76), (415, 118), (432, 175),
-                  (422, 235), (406, 182), (382, 144), (336, 132),
-                  (300, 138), (264, 132), (218, 144), (194, 182)
-              ]
-              draw.polygon(hair_pts, fill=(42, 26, 16))
-              draw.chord([195, 58, 330, 148], 0, 360, fill=(50, 32, 20))
-              draw.chord([270, 54, 405, 145], 0, 360, fill=(38, 24, 15))
-              draw.arc([210, 72, 385, 140], 185, 355, fill=(74, 48, 32), width=4)
-              draw.arc([230, 86, 365, 150], 185, 355, fill=(66, 42, 28), width=3)
+          img_a = render_n64_panel("A")
+          img_e = render_n64_panel("E")
+          img_i = render_n64_panel("I")
+          img_o = render_n64_panel("O")
 
-              # Variacoes apenas na expressao bucal
-              if mouth_mode == "closed":
-                  draw.polygon([(266, 334), (288, 329), (300, 332), (312, 329), (334, 334), (300, 336)], fill=(176, 106, 92))
-                  draw.polygon([(268, 335), (332, 335), (316, 344), (284, 344)], fill=(192, 120, 106))
-                  draw.line([(265, 335), (300, 336), (335, 335)], fill=(104, 54, 46), width=2)
-              elif mouth_mode == "open":
-                  draw.polygon([(265, 331), (288, 326), (300, 329), (312, 326), (335, 331), (315, 348), (285, 348)], fill=(184, 112, 98))
-                  draw.polygon([(274, 333), (326, 333), (316, 342), (284, 342)], fill=(62, 24, 24))
-                  draw.line([(282, 334), (318, 334)], fill=(238, 234, 228), width=2)
-              elif mouth_mode == "o":
-                  draw.ellipse([281, 322, 319, 356], fill=(180, 108, 94))
-                  draw.ellipse([287, 327, 313, 351], fill=(54, 20, 20))
+          # Salvar cada um dos 4 fonemas individualmente
+          img_a.save(os.path.join(res_dir, "reporter_a.png"), "PNG")
+          img_e.save(os.path.join(res_dir, "reporter_e.png"), "PNG")
+          img_i.save(os.path.join(res_dir, "reporter_i.png"), "PNG")
+          img_o.save(os.path.join(res_dir, "reporter_o.png"), "PNG")
 
-              img.convert("RGB").save(out_path, "PNG")
+          # Mapear para os 3 drawables utilizados pelo motor de video do app
+          img_i.save(os.path.join(res_dir, "reporter_closed.png"), "PNG")
+          img_e.save(os.path.join(res_dir, "reporter_open.png"), "PNG")
 
-          render_avatar("closed", os.path.join(res_dir, "reporter_closed.png"))
-          render_avatar("open", os.path.join(res_dir, "reporter_open.png"))
-          render_avatar("o", os.path.join(res_dir, "reporter_o.png"))
+          # Salvar tambem o grid 2x2 completo com linhas pretas finas separando os 4 quadrantes
+          grid = Image.new("RGB", (1204, 1204), (0, 0, 0))
+          grid.paste(img_a, (0, 0))
+          grid.paste(img_e, (604, 0))
+          grid.paste(img_i, (0, 604))
+          grid.paste(img_o, (604, 604))
+          grid.save(os.path.join(res_dir, "avatar_grid_2x2.png"), "PNG")
           '
 
       - name: Compilar APK
