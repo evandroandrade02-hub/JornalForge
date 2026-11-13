@@ -27,7 +27,7 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Ajustar Manifesto, Dependencias, Titulo (+35% com Margem) e Opcao 57s
+      - name: Ajustar Manifesto, Dependencias, Titulo (+20% Adicional) e Opcao 57s
         run: |
           python3 -c '
           import re, os
@@ -46,39 +46,35 @@ jobs:
 
           # Ajustar FrameRenderer.kt:
           # 1. Remover qualquer ColorFilter azulado
-          # 2. Aumentar o TITULO em +35% (muito mais em evidencia) e textos secundarios em +14%
-          # 3. Garantir quebra de linha automatica e recuo seguro para nao invadir o avatar nem sair da tela
+          # 2. Aumentar o TITULO em mais 20% (totalizando +62% sobre o original) e textos secundarios em +14%
+          # 3. Ajustar quebra de linha e margem de seguranca para o titulo nunca sair da tela nem invadir o avatar
           fr_path = "app/src/main/java/com/jornalforge/app/video/FrameRenderer.kt"
           if os.path.exists(fr_path):
               fr = open(fr_path).read()
               fr = re.sub(r"\.colorFilter\s*=\s*[^\n]+", "", fr)
 
-              # Identificar os tamanhos de fonte: o maior textSize (ou associado a title) ganha +35%, os demais ganham +14%
               sizes = [float(x) for x in re.findall(r"textSize\s*=\s*(\d+(?:\.\d+)?)f", fr)]
               max_size = max(sizes) if sizes else 40.0
 
               def boost_font_smart(match):
-                  full_line = match.group(0)
                   prefix = match.group(1)
                   val = float(match.group(2))
-                  # Se for a fonte do titulo (maior fonte ou contem title no contexto proximo), aumenta 35%
                   if val >= max_size * 0.85:
-                      new_val = round(val * 1.35, 1)
+                      # Aumenta +20% sobre o ajuste anterior (1.35 * 1.20 = 1.62x)
+                      new_val = round(val * 1.62, 1)
                   else:
                       new_val = round(val * 1.14, 1)
                   return f"{prefix}{new_val}f"
 
               fr = re.sub(r"(textSize\s*=\s*)(\d+(?:\.\d+)?)f", boost_font_smart, fr)
 
-              # Ajustar limite de caracteres por linha para o titulo grande quebrar certinho dentro da margem segura
               def shrink_line_chars(match):
                   prefix = match.group(1)
                   val = int(match.group(2))
                   if val <= 28:
-                      # Linha de titulo: reduz ~26% na contagem de caracteres por linha para compensar os +35% de fonte
-                      new_val = max(14, int(val * 0.74))
+                      # Reduz proporcionalmente os caracteres por linha do titulo para caber com folga na tela
+                      new_val = max(11, int(val * 0.60))
                   else:
-                      # Linha de subtitulo/legenda: reduz ~15%
                       new_val = max(18, int(val * 0.85))
                   return f"{prefix}{new_val}"
 
@@ -100,7 +96,7 @@ jobs:
                   open(sp_path, "w").write(sp)
           '
 
-      - name: Atualizar MainActivity (com opcao 57s e 4 fonemas), Service e Muxer
+      - name: Atualizar MainActivity, Service (com Alternancia Dinamica de Boca) e Muxer
         run: |
           cat << 'EOF' > app/src/main/java/com/jornalforge/app/MainActivity.kt
           @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -473,7 +469,7 @@ jobs:
                       }
                   }
 
-                  StepCard(title = "ETAPA 4 • Voz Faber e Avatar Low-Poly N64") {
+                  StepCard(title = "ETAPA 4 • Voz Faber e Avatar Alinhado") {
                       val offlineReady = remember { PiperTtsEngine(context).isOfflineFaberModelInstalled() }
                       Text("• Voz Faber - Português Brasileiro (pt_BR-faber-medium.onnx)", color = Color.White, fontSize = 13.sp)
                       Text("• Motor Piper integrado | Velocidade 0.95 (Fala pausada e eloquente)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
@@ -483,7 +479,8 @@ jobs:
                           color = Color(0xFF81C784),
                           fontSize = 12.sp
                       )
-                      Text("• Estilo Visual: Low-Poly 3D Fiel ao Modelo (4 Expressões A, E, I, O)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+                      Text("• Avatar de reportagem centralizado (Escala 60% anti-sobreposição)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+                      Text("• Alternância dinâmica de boca ativa durante toda a fala", color = Color(0xFFB8C2D4), fontSize = 13.sp)
 
                       Spacer(modifier = Modifier.height(8.dp))
                       Text("Limiar RMS de Pausa Vocal: ${rmsThreshold.toInt()} (Padrão: 520 PCM 16-bit)", color = Color.White, fontSize = 12.sp)
@@ -497,10 +494,9 @@ jobs:
                           horizontalArrangement = Arrangement.SpaceEvenly,
                           modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                       ) {
-                          AvatarPreviewItem(R.drawable.reporter_a, "Fonema A")
-                          AvatarPreviewItem(R.drawable.reporter_open, "Fonema E")
-                          AvatarPreviewItem(R.drawable.reporter_closed, "Fonema I")
-                          AvatarPreviewItem(R.drawable.reporter_o, "Fonema O")
+                          AvatarPreviewItem(R.drawable.reporter_closed, "Closed (Pausa)")
+                          AvatarPreviewItem(R.drawable.reporter_open, "Open (Fala)")
+                          AvatarPreviewItem(R.drawable.reporter_o, "Formato O")
                       }
                   }
               }
@@ -533,7 +529,7 @@ jobs:
                       painter = painterResource(id = resId),
                       contentDescription = label,
                       modifier = Modifier
-                          .size(72.dp)
+                          .size(80.dp)
                           .border(1.dp, Color(0xFF37474F), RoundedCornerShape(6.dp))
                   )
                   Spacer(modifier = Modifier.height(4.dp))
@@ -542,7 +538,312 @@ jobs:
           }
           EOF
 
-          echo "cGFja2FnZSBjb20uam9ybmFsZm9yZ2UuYXBwLnNlcnZpY2UKCmltcG9ydCBhbmRyb2lkLmFwcC4qCmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuQ29udGVudFZhbHVlcwppbXBvcnQgYW5kcm9pZC5jb250ZW50LkNvbnRleHQKaW1wb3J0IGFuZHJvaWQuY29udGVudC5JbnRlbnQKaW1wb3J0IGFuZHJvaWQubmV0LlVyaQppbXBvcnQgYW5kcm9pZC5vcy5CdWlsZAppbXBvcnQgYW5kcm9pZC5vcy5FbnZpcm9ubWVudAppbXBvcnQgYW5kcm9pZC5vcy5JQmluZGVyCmltcG9ydCBhbmRyb2lkLm9zLlN0YXRGcwppbXBvcnQgYW5kcm9pZC5wcm92aWRlci5NZWRpYVN0b3JlCmltcG9ydCBhbmRyb2lkeC5jb3JlLmFwcC5Ob3RpZmljYXRpb25Db21wYXQKaW1wb3J0IGNvbS5qb3JuYWxmb3JnZS5hcHAuYXVkaW8uTW91dGhTdGF0ZQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5hdWRpby5QaXBlclR0c0VuZ2luZQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5hdWRpby5TY2VuZUF1ZGlvRGF0YQppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5tb2RlbC5Ob3JtYWxpemVkU2NyaXB0CmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLm1vZGVsLlNjcmlwdFBhcnNlcgppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC5tb2RlbC5WaWRlb0FzcGVjdAppbXBvcnQgY29tLmpvcm5hbGZvcmdlLmFwcC52aWRlby5GcmFtZVJlbmRlcmVyCmltcG9ydCBjb20uam9ybmFsZm9yZ2UuYXBwLnZpZGVvLlNpbXBsZU1wNE11eGVyCmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuKgppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuTXV0YWJsZVN0YXRlRmxvdwppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmZsb3cuU3RhdGVGbG93CmltcG9ydCBqYXZhLmlvLkZpbGUKaW1wb3J0IGphdmEuaW8uRmlsZUlucHV0U3RyZWFtCgpzZWFsZWQgY2xhc3MgRXhwb3J0U3RhdHVzIHsKICAgIG9iamVjdCBJZGxlIDogRXhwb3J0U3RhdHVzKCkKICAgIGRhdGEgY2xhc3MgUnVubmluZyh2YWwgcGhhc2U6IFN0cmluZywgdmFsIHByb2dyZXNzUGVyY2VudDogSW50KSA6IEV4cG9ydFN0YXR1cygpCiAgICBkYXRhIGNsYXNzIENvbXBsZXRlZCh2YWwgZ2FsbGVyeVVyaTogVXJpLCB2YWwgZGlzcGxheVBhdGg6IFN0cmluZykgOiBFeHBvcnRTdGF0dXMoKQogICAgZGF0YSBjbGFzcyBGYWlsZWQodmFsIGV4YWN0UGhhc2U6IFN0cmluZywgdmFsIGRldGFpbHM6IFN0cmluZykgOiBFeHBvcnRTdGF0dXMoKQp9CgpjbGFzcyBWaWRlb0V4cG9ydFNlcnZpY2UgOiBTZXJ2aWNlKCkgewoKICAgIGNvbXBhbmlvbiBvYmplY3QgewogICAgICAgIHByaXZhdGUgdmFsIF9zdGF0dXNGbG93ID0gTXV0YWJsZVN0YXRlRmxvdzxFeHBvcnRTdGF0dXM+KEV4cG9ydFN0YXR1cy5JZGxlKQogICAgICAgIHZhbCBzdGF0dXNGbG93OiBTdGF0ZUZsb3c8RXhwb3J0U3RhdHVzPiA9IF9zdGF0dXNGbG93CgogICAgICAgIGNvbnN0IHZhbCBBQ1RJT05fU1RBUlQgPSAiY29tLmpvcm5hbGZvcmdlLmFwcC5TVEFSVF9FWFBPUlQiCiAgICAgICAgY29uc3QgdmFsIEFDVElPTl9DQU5DRUwgPSAiY29tLmpvcm5hbGZvcmdlLmFwcC5DQU5DRUxfRVhQT1JUIgogICAgICAgIGNvbnN0IHZhbCBFWFRSQV9KU09OID0gImV4dHJhX2pzb24iCiAgICAgICAgY29uc3QgdmFsIEVYVFJBX0FTUEVDVCA9ICJleHRyYV9hc3BlY3QiCiAgICAgICAgY29uc3QgdmFsIEVYVFJBX1JNU19USFJFU0hPTEQgPSAiZXh0cmFfcm1zIgogICAgICAgIGNvbnN0IHZhbCBFWFRSQV9RVUlDS19URVNUID0gImV4dHJhX3F1aWNrX3Rlc3QiCiAgICAgICAgcHJpdmF0ZSBjb25zdCB2YWwgQ0hBTk5FTF9JRCA9ICJqb3JuYWxmb3JnZV9leHBvcnRfY2hhbm5lbCIKICAgICAgICBwcml2YXRlIGNvbnN0IHZhbCBOT1RJRl9JRCA9IDEwMDEKICAgIH0KCiAgICBwcml2YXRlIHZhbCBzZXJ2aWNlSm9iID0gU3VwZXJ2aXNvckpvYigpCiAgICBwcml2YXRlIHZhbCBzZXJ2aWNlU2NvcGUgPSBDb3JvdXRpbmVTY29wZShEaXNwYXRjaGVycy5EZWZhdWx0ICsgc2VydmljZUpvYikKICAgIHByaXZhdGUgdmFyIGN1cnJlbnRKb2I6IEpvYj8gPSBudWxsCgogICAgb3ZlcnJpZGUgZnVuIG9uQ3JlYXRlKCkgewogICAgICAgIHN1cGVyLm9uQ3JlYXRlKCkKICAgICAgICBjcmVhdGVOb3RpZmljYXRpb25DaGFubmVsKCkKICAgIH0KCiAgICBvdmVycmlkZSBmdW4gb25TdGFydENvbW1hbmQoaW50ZW50OiBJbnRlbnQ/LCBmbGFnczogSW50LCBzdGFydElkOiBJbnQpOiBJbnQgewogICAgICAgIHdoZW4gKGludGVudD8uYWN0aW9uKSB7CiAgICAgICAgICAgIEFDVElPTl9DQU5DRUwgLT4gewogICAgICAgICAgICAgICAgY3VycmVudEpvYj8uY2FuY2VsKCkKICAgICAgICAgICAgICAgIGNsZWFudXBUZW1wRGlyKCkKICAgICAgICAgICAgICAgIF9zdGF0dXNGbG93LnZhbHVlID0gRXhwb3J0U3RhdHVzLkZhaWxlZCgiRXhwb3J0YcOnw6NvIGNhbmNlbGFkYSBwZWxvIHVzdcOhcmlvIiwgIkFycXVpdm9zIHRlbXBvcsOhcmlvcyByZW1vdmlkb3MuIikKICAgICAgICAgICAgICAgIHN0b3BGb3JlZ3JvdW5kKFNUT1BfRk9SRUdST1VORF9SRU1PVkUpCiAgICAgICAgICAgICAgICBzdG9wU2VsZigpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgQUNUSU9OX1NUQVJUIC0+IHsKICAgICAgICAgICAgICAgIHZhbCByYXdKc29uID0gaW50ZW50LmdldFN0cmluZ0V4dHJhKEVYVFJBX0pTT04pID86ICIiCiAgICAgICAgICAgICAgICB2YWwgYXNwZWN0TmFtZSA9IGludGVudC5nZXRTdHJpbmdFeHRyYShFWFRSQV9BU1BFQ1QpID86IFZpZGVvQXNwZWN0LkhPUklaT05UQUxfMTZfOS5uYW1lCiAgICAgICAgICAgICAgICB2YWwgcm1zVGhyZXNob2xkID0gaW50ZW50LmdldERvdWJsZUV4dHJhKEVYVFJBX1JNU19USFJFU0hPTEQsIFBpcGVyVHRzRW5naW5lLkRFRkFVTFRfUk1TX1RIUkVTSE9MRCkKICAgICAgICAgICAgICAgIHZhbCBpc1F1aWNrVGVzdCA9IGludGVudC5nZXRCb29sZWFuRXh0cmEoRVhUUkFfUVVJQ0tfVEVTVCwgZmFsc2UpCiAgICAgICAgICAgICAgICB2YWwgYXNwZWN0ID0gVmlkZW9Bc3BlY3QudmFsdWVPZihhc3BlY3ROYW1lKQoKICAgICAgICAgICAgICAgIHN0YXJ0Rm9yZWdyb3VuZChOT1RJRl9JRCwgYnVpbGROb3RpZmljYXRpb24oIlByZXBhcmFuZG8gcm90ZWlybyIsIDApKQogICAgICAgICAgICAgICAgY3VycmVudEpvYiA9IHNlcnZpY2VTY29wZS5sYXVuY2ggewogICAgICAgICAgICAgICAgICAgIHJ1blBpcGVsaW5lKHJhd0pzb24sIGFzcGVjdCwgcm1zVGhyZXNob2xkLCBpc1F1aWNrVGVzdCkKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICByZXR1cm4gU1RBUlRfTk9UX1NUSUNLWQogICAgfQoKICAgIHByaXZhdGUgc3VzcGVuZCBmdW4gcnVuUGlwZWxpbmUoCiAgICAgICAgcmF3SnNvbjogU3RyaW5nLAogICAgICAgIGFzcGVjdDogVmlkZW9Bc3BlY3QsCiAgICAgICAgcm1zVGhyZXNob2xkOiBEb3VibGUsCiAgICAgICAgaXNRdWlja1Rlc3Q6IEJvb2xlYW4KICAgICkgewogICAgICAgIHZhbCB0ZW1wUm9vdCA9IEZpbGUoY2FjaGVEaXIsICJqb3JuYWxmb3JnZV9qb2IiKQogICAgICAgIHRyeSB7CiAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJQcmVwYXJhbmRvIHJvdGVpcm8iLCA1KQogICAgICAgICAgICB2YWwgc2NyaXB0OiBOb3JtYWxpemVkU2NyaXB0ID0gaWYgKGlzUXVpY2tUZXN0KSB7CiAgICAgICAgICAgICAgICBTY3JpcHRQYXJzZXIuZ2V0UXVpY2tUZXN0U2NyaXB0KCkKICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgIFNjcmlwdFBhcnNlci52YWxpZGF0ZUFuZE5vcm1hbGl6ZShyYXdKc29uKS5nZXRPckVsc2UgeyBlcnIgLT4KICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIG5hIHZhbGlkYcOnw6NvIGRvIHJvdGVpcm8iLCBlcnIubG9jYWxpemVkTWVzc2FnZSA/OiAiSlNPTiBpbnbDoWxpZG8iKQogICAgICAgICAgICAgICAgICAgIHJldHVybgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgc3RhdCA9IFN0YXRGcyhjYWNoZURpci5hYnNvbHV0ZVBhdGgpCiAgICAgICAgICAgIHZhbCBhdmFpbGFibGVNZWdhYnl0ZXMgPSAoc3RhdC5hdmFpbGFibGVCbG9ja3NMb25nICogc3RhdC5ibG9ja1NpemVMb25nKSAvICgxMDI0ICogMTAyNCkKICAgICAgICAgICAgaWYgKGF2YWlsYWJsZU1lZ2FieXRlcyA8IDI1MCkgewogICAgICAgICAgICAgICAgZmFpbEF0KCJGYWx0YSBkZSBlc3Bhw6dvIG5vIGFybWF6ZW5hbWVudG8iLCAiRXNwYcOnbyBkaXNwb27DrXZlbCBpbnN1ZmljaWVudGUgKCRhdmFpbGFibGVNZWdhYnl0ZXMgTUIpLiIpCiAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgfQoKICAgICAgICAgICAgaWYgKHRlbXBSb290LmV4aXN0cygpKSB0ZW1wUm9vdC5kZWxldGVSZWN1cnNpdmVseSgpCiAgICAgICAgICAgIHZhbCB3YXZEaXIgPSBGaWxlKHRlbXBSb290LCAid2F2cyIpLmFwcGx5IHsgbWtkaXJzKCkgfQogICAgICAgICAgICB2YWwgZnJhbWVzRGlyID0gRmlsZSh0ZW1wUm9vdCwgImZyYW1lcyIpLmFwcGx5IHsgbWtkaXJzKCkgfQoKICAgICAgICAgICAgdmFsIHR0c0VuZ2luZSA9IFBpcGVyVHRzRW5naW5lKGFwcGxpY2F0aW9uQ29udGV4dCkKICAgICAgICAgICAgdmFsIHNjZW5lQXVkaW9MaXN0ID0gbXV0YWJsZUxpc3RPZjxTY2VuZUF1ZGlvRGF0YT4oKQogICAgICAgICAgICB2YWwgdG90YWxTY2VuZXMgPSBzY3JpcHQuc2NlbmVzLnNpemUKCiAgICAgICAgICAgIGZvciAoKGluZGV4LCBzY2VuZSkgaW4gc2NyaXB0LnNjZW5lcy53aXRoSW5kZXgoKSkgewogICAgICAgICAgICAgICAgY3VycmVudENvcm91dGluZUNvbnRleHQoKS5lbnN1cmVBY3RpdmUoKQogICAgICAgICAgICAgICAgdmFsIHNjZW5lTnVtID0gaW5kZXggKyAxCiAgICAgICAgICAgICAgICB2YWwgcHJvZ3Jlc3MgPSAxMCArICgoaW5kZXgudG9GbG9hdCgpIC8gdG90YWxTY2VuZXMpICogMjUpLnRvSW50KCkKICAgICAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJHZXJhbmRvIG5hcnJhw6fDo28gRmFiZXIgY2VuYSAkc2NlbmVOdW0gZGUgJHRvdGFsU2NlbmVzIiwgcHJvZ3Jlc3MpCgogICAgICAgICAgICAgICAgdmFsIHdhdkZpbGUgPSBGaWxlKHdhdkRpciwgU3RyaW5nLmZvcm1hdCgic2NlbmVfJTA0ZC53YXYiLCBzY2VuZU51bSkpCiAgICAgICAgICAgICAgICB2YWwgYXVkaW9EYXRhID0gdHJ5IHsKICAgICAgICAgICAgICAgICAgICB0dHNFbmdpbmUuc3ludGhlc2l6ZVNjZW5lVG9XYXYoc2NlbmUubmFycmF0aW9uLCB3YXZGaWxlLCBybXNUaHJlc2hvbGQpCiAgICAgICAgICAgICAgICB9IGNhdGNoIChlOiBFeGNlcHRpb24pIHsKICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIG5hIHPDrW50ZXNlIGRlIHZveiIsICJDZW5hICRzY2VuZU51bTogJHtlLmxvY2FsaXplZE1lc3NhZ2V9IikKICAgICAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgICB1cGRhdGVQaGFzZSgiQW5hbGlzYW5kbyBwYXVzYXMgZGEgdm96IiwgcHJvZ3Jlc3MgKyAyKQogICAgICAgICAgICAgICAgc2NlbmVBdWRpb0xpc3QuYWRkKGF1ZGlvRGF0YS5jb3B5KHNjZW5lTnVtYmVyID0gc2NlbmVOdW0pKQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgZnVsbEF1ZGlvV2F2ID0gRmlsZSh0ZW1wUm9vdCwgImZ1bGxfbmFycmF0aW9uLndhdiIpCiAgICAgICAgICAgIFNpbXBsZU1wNE11eGVyLmNvbmNhdGVuYXRlV2F2cyhzY2VuZUF1ZGlvTGlzdC5tYXAgeyBpdC53YXZGaWxlIH0sIGZ1bGxBdWRpb1dhdikKCiAgICAgICAgICAgIHZhbCBmcmFtZVJlbmRlcmVyID0gRnJhbWVSZW5kZXJlcihhcHBsaWNhdGlvbkNvbnRleHQpCiAgICAgICAgICAgIHZhciBnbG9iYWxGcmFtZUluZGV4ID0gMQoKICAgICAgICAgICAgZm9yICgoaW5kZXgsIHNjZW5lKSBpbiBzY3JpcHQuc2NlbmVzLndpdGhJbmRleCgpKSB7CiAgICAgICAgICAgICAgICBjdXJyZW50Q29yb3V0aW5lQ29udGV4dCgpLmVuc3VyZUFjdGl2ZSgpCiAgICAgICAgICAgICAgICB2YWwgc2NlbmVOdW0gPSBpbmRleCArIDEKICAgICAgICAgICAgICAgIHZhbCBhdWRpb0RhdGEgPSBzY2VuZUF1ZGlvTGlzdFtpbmRleF0KICAgICAgICAgICAgICAgIHZhbCBzY2VuZUZyYW1lc0NvdW50ID0gYXVkaW9EYXRhLm1vdXRoVGltZWxpbmU0RnBzLnNpemUuY29lcmNlQXRMZWFzdCgxKQoKICAgICAgICAgICAgICAgIHZhbCBwcm9ncmVzcyA9IDQwICsgKChpbmRleC50b0Zsb2F0KCkgLyB0b3RhbFNjZW5lcykgKiAzNSkudG9JbnQoKQogICAgICAgICAgICAgICAgdXBkYXRlUGhhc2UoIlJlbmRlcml6YW5kbyBhdmF0YXIgZSBsZWdlbmRhcyBjZW5hICRzY2VuZU51bSBkZSAkdG90YWxTY2VuZXMiLCBwcm9ncmVzcykKCiAgICAgICAgICAgICAgICBmb3IgKGYgaW4gMCB1bnRpbCBzY2VuZUZyYW1lc0NvdW50KSB7CiAgICAgICAgICAgICAgICAgICAgY3VycmVudENvcm91dGluZUNvbnRleHQoKS5lbnN1cmVBY3RpdmUoKQogICAgICAgICAgICAgICAgICAgIHZhbCBsb2NhbFRpbWUgPSBmICogMC4yNQogICAgICAgICAgICAgICAgICAgIHZhbCBtb3V0aFN0YXRlOiBNb3V0aFN0YXRlID0gYXVkaW9EYXRhLm1vdXRoVGltZWxpbmU0RnBzLmdldE9yRWxzZShmKSB7IE1vdXRoU3RhdGUuQ0xPU0VEIH0KICAgICAgICAgICAgICAgICAgICB2YWwgZnJhbWVGaWxlID0gRmlsZShmcmFtZXNEaXIsIFN0cmluZy5mb3JtYXQoImZyYW1lXyUwNmQuanBnIiwgZ2xvYmFsRnJhbWVJbmRleCsrKSkKCiAgICAgICAgICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgICAgICAgICAgZnJhbWVSZW5kZXJlci5yZW5kZXJBbmRTYXZlRnJhbWUoCiAgICAgICAgICAgICAgICAgICAgICAgICAgICB2aWRlb1RpdGxlID0gc2NyaXB0LnZpZGVvVGl0bGUsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBzY2VuZSA9IHNjZW5lLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgbG9jYWxUaW1lID0gbG9jYWxUaW1lLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgc2NlbmVEdXJhdGlvbiA9IGF1ZGlvRGF0YS5kdXJhdGlvblNlY29uZHMsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBtb3V0aFN0YXRlID0gbW91dGhTdGF0ZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGFzcGVjdCA9IGFzcGVjdCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIG91dHB1dEZpbGUgPSBmcmFtZUZpbGUKICAgICAgICAgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikgewogICAgICAgICAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIGFvIGNyaWFyIGZyYW1lcyIsICJFcnJvIG5hIGNlbmEgJHNjZW5lTnVtOiAke2UubG9jYWxpemVkTWVzc2FnZX0iKQogICAgICAgICAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIHVwZGF0ZVBoYXNlKCJDb2RpZmljYW5kbyB2w61kZW8iLCA4MCkKICAgICAgICAgICAgdmFsIGZpbmFsVGVtcE1wNCA9IEZpbGUodGVtcFJvb3QsICJqb3JuYWxmb3JnZV9maW5hbC5tcDQiKQogICAgICAgICAgICB1cGRhdGVQaGFzZSgiQWRpY2lvbmFuZG8gw6F1ZGlvIiwgODYpCgogICAgICAgICAgICBTaW1wbGVNcDRNdXhlci5tdXgoZnJhbWVzRGlyLCBmdWxsQXVkaW9XYXYsIGZpbmFsVGVtcE1wNCwgYXNwZWN0LndpZHRoLCBhc3BlY3QuaGVpZ2h0KQogICAgICAgICAgICBpZiAoIWZpbmFsVGVtcE1wNC5leGlzdHMoKSB8fCBmaW5hbFRlbXBNcDQubGVuZ3RoKCkgPT0gMEwpIHsKICAgICAgICAgICAgICAgIGZhaWxBdCgiRmFsaGEgbm8gY29kaWZpY2Fkb3IgTVA0IiwgIkVycm8gbmEgY29kaWZpY2HDp8OjbyBILjI2NC9BQUMuIikKICAgICAgICAgICAgICAgIHJldHVybgogICAgICAgICAgICB9CgogICAgICAgICAgICB1cGRhdGVQaGFzZSgiU2FsdmFuZG8gbmEgZ2FsZXJpYSIsIDk0KQogICAgICAgICAgICB2YWwgc2F2ZWRVcmkgPSBzYXZlTXA0VG9HYWxsZXJ5KGZpbmFsVGVtcE1wNCwgc2NyaXB0LnZpZGVvVGl0bGUpCiAgICAgICAgICAgIGlmIChzYXZlZFVyaSA9PSBudWxsKSB7CiAgICAgICAgICAgICAgICBmYWlsQXQoIkZhbGhhIGFvIHNhbHZhciBuYSBnYWxlcmlhIiwgIk7Do28gZm9pIHBvc3PDrXZlbCBncmF2YXIgbyBhcnF1aXZvIE1QNCBubyBNZWRpYVN0b3JlLiIpCiAgICAgICAgICAgICAgICByZXR1cm4KICAgICAgICAgICAgfQoKICAgICAgICAgICAgdXBkYXRlUGhhc2UoIkxpbXBlemEgZG9zIGFycXVpdm9zIHRlbXBvcsOhcmlvcyIsIDk4KQogICAgICAgICAgICBjbGVhbnVwVGVtcERpcigpCgogICAgICAgICAgICB1cGRhdGVQaGFzZSgiVsOtZGVvIGZpbmFsaXphZG8iLCAxMDApCiAgICAgICAgICAgIF9zdGF0dXNGbG93LnZhbHVlID0gRXhwb3J0U3RhdHVzLkNvbXBsZXRlZChzYXZlZFVyaSwgIk1vdmllcy9Kb3JuYWxGb3JnZSIpCiAgICAgICAgICAgIHN0b3BGb3JlZ3JvdW5kKFNUT1BfRk9SRUdST1VORF9SRU1PVkUpCiAgICAgICAgICAgIHN0b3BTZWxmKCkKCiAgICAgICAgfSBjYXRjaCAoZTogQ2FuY2VsbGF0aW9uRXhjZXB0aW9uKSB7CiAgICAgICAgICAgIGNsZWFudXBUZW1wRGlyKCkKICAgICAgICB9IGNhdGNoIChlOiBFeGNlcHRpb24pIHsKICAgICAgICAgICAgZmFpbEF0KCJGYWxoYSBpbmVzcGVyYWRhIiwgZS5sb2NhbGl6ZWRNZXNzYWdlID86ICJFcnJvIGRlc2NvbmhlY2lkbyIpCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIHNhdmVNcDRUb0dhbGxlcnkoc291cmNlTXA0OiBGaWxlLCB0aXRsZTogU3RyaW5nKTogVXJpPyB7CiAgICAgICAgcmV0dXJuIHRyeSB7CiAgICAgICAgICAgIHZhbCBjbGVhblRpdGxlID0gdGl0bGUucmVwbGFjZShSZWdleCgiW15hLXpBLVowLTlfLV0iKSwgIl8iKS50YWtlKDQwKQogICAgICAgICAgICB2YWwgZmlsZU5hbWUgPSAiSm9ybmFsRm9yZ2VfJHtjbGVhblRpdGxlfV8ke1N5c3RlbS5jdXJyZW50VGltZU1pbGxpcygpfS5tcDQiCiAgICAgICAgICAgIHZhbCB2YWx1ZXMgPSBDb250ZW50VmFsdWVzKCkuYXBwbHkgewogICAgICAgICAgICAgICAgcHV0KE1lZGlhU3RvcmUuVmlkZW8uTWVkaWEuRElTUExBWV9OQU1FLCBmaWxlTmFtZSkKICAgICAgICAgICAgICAgIHB1dChNZWRpYVN0b3JlLlZpZGVvLk1lZGlhLk1JTUVfVFlQRSwgInZpZGVvL21wNCIpCiAgICAgICAgICAgICAgICBwdXQoTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5SRUxBVElWRV9QQVRILCBFbnZpcm9ubWVudC5ESVJFQ1RPUllfTU9WSUVTICsgIi9Kb3JuYWxGb3JnZSIpCiAgICAgICAgICAgICAgICBwdXQoTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5JU19QRU5ESU5HLCAxKQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgcmVzb2x2ZXIgPSBhcHBsaWNhdGlvbkNvbnRleHQuY29udGVudFJlc29sdmVyCiAgICAgICAgICAgIHZhbCBjb2xsZWN0aW9uID0gTWVkaWFTdG9yZS5WaWRlby5NZWRpYS5nZXRDb250ZW50VXJpKE1lZGlhU3RvcmUuVk9MVU1FX0VYVEVSTkFMX1BSSU1BUlkpCiAgICAgICAgICAgIHZhbCBpdGVtVXJpID0gcmVzb2x2ZXIuaW5zZXJ0KGNvbGxlY3Rpb24sIHZhbHVlcykgPzogcmV0dXJuIG51bGwKCiAgICAgICAgICAgIHJlc29sdmVyLm9wZW5PdXRwdXRTdHJlYW0oaXRlbVVyaSk/LnVzZSB7IG91dFN0cmVhbSAtPgogICAgICAgICAgICAgICAgRmlsZUlucHV0U3RyZWFtKHNvdXJjZU1wNCkudXNlIHsgaW5TdHJlYW0gLT4KICAgICAgICAgICAgICAgICAgICBpblN0cmVhbS5jb3B5VG8ob3V0U3RyZWFtKQogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWx1ZXMuY2xlYXIoKQogICAgICAgICAgICB2YWx1ZXMucHV0KE1lZGlhU3RvcmUuVmlkZW8uTWVkaWEuSVNfUEVORElORywgMCkKICAgICAgICAgICAgcmVzb2x2ZXIudXBkYXRlKGl0ZW1VcmksIHZhbHVlcywgbnVsbCwgbnVsbCkKICAgICAgICAgICAgaXRlbVVyaQogICAgICAgIH0gY2F0Y2ggKGU6IEV4Y2VwdGlvbikgewogICAgICAgICAgICBudWxsCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIGNsZWFudXBUZW1wRGlyKCkgewogICAgICAgIHRyeSB7CiAgICAgICAgICAgIHZhbCB0ZW1wUm9vdCA9IEZpbGUoY2FjaGVEaXIsICJqb3JuYWxmb3JnZV9qb2IiKQogICAgICAgICAgICBpZiAodGVtcFJvb3QuZXhpc3RzKCkpIHRlbXBSb290LmRlbGV0ZVJlY3Vyc2l2ZWx5KCkKICAgICAgICB9IGNhdGNoIChfOiBFeGNlcHRpb24pIHt9CiAgICB9CgogICAgcHJpdmF0ZSBmdW4gdXBkYXRlUGhhc2UocGhhc2U6IFN0cmluZywgcGVyY2VudDogSW50KSB7CiAgICAgICAgX3N0YXR1c0Zsb3cudmFsdWUgPSBFeHBvcnRTdGF0dXMuUnVubmluZyhwaGFzZSwgcGVyY2VudCkKICAgICAgICB2YWwgbm0gPSBnZXRTeXN0ZW1TZXJ2aWNlKENvbnRleHQuTk9USUZJQ0FUSU9OX1NFUlZJQ0UpIGFzIE5vdGlmaWNhdGlvbk1hbmFnZXIKICAgICAgICBubS5ub3RpZnkoTk9USUZfSUQsIGJ1aWxkTm90aWZpY2F0aW9uKHBoYXNlLCBwZXJjZW50KSkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBmYWlsQXQoZXhhY3RQaGFzZTogU3RyaW5nLCBkZXRhaWxzOiBTdHJpbmcpIHsKICAgICAgICBjbGVhbnVwVGVtcERpcigpCiAgICAgICAgX3N0YXR1c0Zsb3cudmFsdWUgPSBFeHBvcnRTdGF0dXMuRmFpbGVkKGV4YWN0UGhhc2UsIGRldGFpbHMpCiAgICAgICAgc3RvcEZvcmVncm91bmQoU1RPUF9GT1JFR1JPVU5EX1JFTU9WRSkKICAgICAgICBzdG9wU2VsZigpCiAgICB9CgogICAgcHJpdmF0ZSBmdW4gYnVpbGROb3RpZmljYXRpb24ocGhhc2U6IFN0cmluZywgcGVyY2VudDogSW50KTogTm90aWZpY2F0aW9uIHsKICAgICAgICByZXR1cm4gTm90aWZpY2F0aW9uQ29tcGF0LkJ1aWxkZXIodGhpcywgQ0hBTk5FTF9JRCkKICAgICAgICAgICAgLnNldENvbnRlbnRUaXRsZSgiSm9ybmFsRm9yZ2Ug4oCiIFByb2R1w6fDo28gZGUgVsOtZGVvIikKICAgICAgICAgICAgLnNldENvbnRlbnRUZXh0KCIkcGhhc2UgKCRwZXJjZW50JSkiKQogICAgICAgICAgICAuc2V0U21hbGxJY29uKGFuZHJvaWQuUi5kcmF3YWJsZS5pY19tZWRpYV9wbGF5KQogICAgICAgICAgICAuc2V0T25nb2luZyh0cnVlKQogICAgICAgICAgICAuc2V0UHJvZ3Jlc3MoMTAwLCBwZXJjZW50LCBmYWxzZSkKICAgICAgICAgICAgLmJ1aWxkKCkKICAgIH0KCiAgICBwcml2YXRlIGZ1biBjcmVhdGVOb3RpZmljYXRpb25DaGFubmVsKCkgewogICAgICAgIGlmIChCdWlsZC5WRVJTSU9OLlNES19JTlQgPj0gQnVpbGQuVkVSU0lPTl9DT0RFUy5PKSB7CiAgICAgICAgICAgIHZhbCBjaGFubmVsID0gTm90aWZpY2F0aW9uQ2hhbm5lbCgKICAgICAgICAgICAgICAgIENIQU5ORUxfSUQsCiAgICAgICAgICAgICAgICAiRXhwb3J0YcOnw6NvIEpvcm5hbEZvcmdlIiwKICAgICAgICAgICAgICAgIE5vdGlmaWNhdGlvbk1hbmFnZXIuSU1QT1JUQU5DRV9MT1cKICAgICAgICAgICAgKQogICAgICAgICAgICB2YWwgbm0gPSBnZXRTeXN0ZW1TZXJ2aWNlKE5vdGlmaWNhdGlvbk1hbmFnZXI6OmNsYXNzLmphdmEpCiAgICAgICAgICAgIG5tLmNyZWF0ZU5vdGlmaWNhdGlvbkNoYW5uZWwoY2hhbm5lbCkKICAgICAgICB9CiAgICB9CgogICAgb3ZlcnJpZGUgZnVuIG9uQmluZChpbnRlbnQ6IEludGVudD8pOiBJQmluZGVyPyA9IG51bGwKfQo=" | base64 -d > app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
+          cat << 'EOF' > app/src/main/java/com/jornalforge/app/service/VideoExportService.kt
+          package com.jornalforge.app.service
+
+          import android.app.*
+          import android.content.ContentValues
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Environment
+          import android.os.IBinder
+          import android.os.StatFs
+          import android.provider.MediaStore
+          import androidx.core.app.NotificationCompat
+          import com.jornalforge.app.audio.MouthState
+          import com.jornalforge.app.audio.PiperTtsEngine
+          import com.jornalforge.app.audio.SceneAudioData
+          import com.jornalforge.app.model.NormalizedScript
+          import com.jornalforge.app.model.ScriptParser
+          import com.jornalforge.app.model.VideoAspect
+          import com.jornalforge.app.video.FrameRenderer
+          import com.jornalforge.app.video.SimpleMp4Muxer
+          import kotlinx.coroutines.*
+          import kotlinx.coroutines.flow.MutableStateFlow
+          import kotlinx.coroutines.flow.StateFlow
+          import java.io.File
+          import java.io.FileInputStream
+
+          sealed class ExportStatus {
+              object Idle : ExportStatus()
+              data class Running(val phase: String, val progressPercent: Int) : ExportStatus()
+              data class Completed(val galleryUri: Uri, val displayPath: String) : ExportStatus()
+              data class Failed(val exactPhase: String, val details: String) : ExportStatus()
+          }
+
+          class VideoExportService : Service() {
+
+              companion object {
+                  private val _statusFlow = MutableStateFlow<ExportStatus>(ExportStatus.Idle)
+                  val statusFlow: StateFlow<ExportStatus> = _statusFlow
+
+                  const val ACTION_START = "com.jornalforge.app.START_EXPORT"
+                  const val ACTION_CANCEL = "com.jornalforge.app.CANCEL_EXPORT"
+                  const val EXTRA_JSON = "extra_json"
+                  const val EXTRA_ASPECT = "extra_aspect"
+                  const val EXTRA_RMS_THRESHOLD = "extra_rms"
+                  const val EXTRA_QUICK_TEST = "extra_quick_test"
+                  private const val CHANNEL_ID = "jornalforge_export_channel"
+                  private const val NOTIF_ID = 1001
+              }
+
+              private val serviceJob = SupervisorJob()
+              private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
+              private var currentJob: Job? = null
+
+              override fun onCreate() {
+                  super.onCreate()
+                  createNotificationChannel()
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  when (intent?.action) {
+                      ACTION_CANCEL -> {
+                          currentJob?.cancel()
+                          cleanupTempDir()
+                          _statusFlow.value = ExportStatus.Failed("Exportação cancelada pelo usuário", "Arquivos temporários removidos.")
+                          stopForeground(STOP_FOREGROUND_REMOVE)
+                          stopSelf()
+                      }
+                      ACTION_START -> {
+                          val rawJson = intent.getStringExtra(EXTRA_JSON) ?: ""
+                          val aspectName = intent.getStringExtra(EXTRA_ASPECT) ?: VideoAspect.HORIZONTAL_16_9.name
+                          val rmsThreshold = intent.getDoubleExtra(EXTRA_RMS_THRESHOLD, PiperTtsEngine.DEFAULT_RMS_THRESHOLD)
+                          val isQuickTest = intent.getBooleanExtra(EXTRA_QUICK_TEST, false)
+                          val aspect = VideoAspect.valueOf(aspectName)
+
+                          startForeground(NOTIF_ID, buildNotification("Preparando roteiro", 0))
+                          currentJob = serviceScope.launch {
+                              runPipeline(rawJson, aspect, rmsThreshold, isQuickTest)
+                          }
+                      }
+                  }
+                  return START_NOT_STICKY
+              }
+
+              private suspend fun runPipeline(
+                  rawJson: String,
+                  aspect: VideoAspect,
+                  rmsThreshold: Double,
+                  isQuickTest: Boolean
+              ) {
+                  val tempRoot = File(cacheDir, "jornalforge_job")
+                  try {
+                      updatePhase("Preparando roteiro", 5)
+                      val script: NormalizedScript = if (isQuickTest) {
+                          ScriptParser.getQuickTestScript()
+                      } else {
+                          ScriptParser.validateAndNormalize(rawJson).getOrElse { err ->
+                              failAt("Falha na validação do roteiro", err.localizedMessage ?: "JSON inválido")
+                              return
+                          }
+                      }
+
+                      val stat = StatFs(cacheDir.absolutePath)
+                      val availableMegabytes = (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
+                      if (availableMegabytes < 250) {
+                          failAt("Falta de espaço no armazenamento", "Espaço disponível insuficiente ($availableMegabytes MB).")
+                          return
+                      }
+
+                      if (tempRoot.exists()) tempRoot.deleteRecursively()
+                      val wavDir = File(tempRoot, "wavs").apply { mkdirs() }
+                      val framesDir = File(tempRoot, "frames").apply { mkdirs() }
+
+                      val ttsEngine = PiperTtsEngine(applicationContext)
+                      val sceneAudioList = mutableListOf<SceneAudioData>()
+                      val totalScenes = script.scenes.size
+
+                      for ((index, scene) in script.scenes.withIndex()) {
+                          currentCoroutineContext().ensureActive()
+                          val sceneNum = index + 1
+                          val progress = 10 + ((index.toFloat() / totalScenes) * 25).toInt()
+                          updatePhase("Gerando narração Faber cena $sceneNum de $totalScenes", progress)
+
+                          val wavFile = File(wavDir, String.format("scene_%04d.wav", sceneNum))
+                          val audioData = try {
+                              ttsEngine.synthesizeSceneToWav(scene.narration, wavFile, rmsThreshold)
+                          } catch (e: Exception) {
+                              failAt("Falha na síntese de voz", "Cena $sceneNum: ${e.localizedMessage}")
+                              return
+                          }
+
+                          updatePhase("Analisando pausas da voz", progress + 2)
+                          sceneAudioList.add(audioData.copy(sceneNumber = sceneNum))
+                      }
+
+                      val fullAudioWav = File(tempRoot, "full_narration.wav")
+                      SimpleMp4Muxer.concatenateWavs(sceneAudioList.map { it.wavFile }, fullAudioWav)
+
+                      val frameRenderer = FrameRenderer(applicationContext)
+                      var globalFrameIndex = 1
+
+                      val allStates = MouthState.values()
+                      val closedState = allStates.firstOrNull { it.name.contains("CLOSE", true) } ?: MouthState.CLOSED
+                      val openState = allStates.firstOrNull { it.name.contains("OPEN", true) } ?: allStates.first()
+                      val oState = allStates.firstOrNull { it != closedState && it != openState } ?: openState
+
+                      for ((index, scene) in script.scenes.withIndex()) {
+                          currentCoroutineContext().ensureActive()
+                          val sceneNum = index + 1
+                          val audioData = sceneAudioList[index]
+                          val sceneFramesCount = audioData.mouthTimeline4Fps.size.coerceAtLeast(1)
+
+                          val progress = 40 + ((index.toFloat() / totalScenes) * 35).toInt()
+                          updatePhase("Renderizando avatar e legendas cena $sceneNum de $totalScenes", progress)
+
+                          var prevRenderedMouth = closedState
+                          for (f in 0 until sceneFramesCount) {
+                              currentCoroutineContext().ensureActive()
+                              val localTime = f * 0.25
+                              val rawMouth: MouthState = audioData.mouthTimeline4Fps.getOrElse(f) { closedState }
+
+                              // Intercala dinamicamente as formas da boca durante a fala para nunca ficar travado com a boca aberta
+                              val mouthState: MouthState = if (rawMouth == closedState) {
+                                  closedState
+                              } else {
+                                  val candidate = when ((f + index) % 4) {
+                                      0 -> openState
+                                      1 -> closedState
+                                      2 -> oState
+                                      else -> openState
+                                  }
+                                  if (candidate == prevRenderedMouth && candidate != closedState) {
+                                      if (f % 2 == 0) closedState else oState
+                                  } else {
+                                      candidate
+                                  }
+                              }
+                              prevRenderedMouth = mouthState
+
+                              val frameFile = File(framesDir, String.format("frame_%06d.jpg", globalFrameIndex++))
+
+                              try {
+                                  frameRenderer.renderAndSaveFrame(
+                                      videoTitle = script.videoTitle,
+                                      scene = scene,
+                                      localTime = localTime,
+                                      sceneDuration = audioData.durationSeconds,
+                                      mouthState = mouthState,
+                                      aspect = aspect,
+                                      outputFile = frameFile
+                                  )
+                              } catch (e: Exception) {
+                                  failAt("Falha ao criar frames", "Erro na cena $sceneNum: ${e.localizedMessage}")
+                                  return
+                              }
+                          }
+                      }
+
+                      updatePhase("Codificando vídeo", 80)
+                      val finalTempMp4 = File(tempRoot, "jornalforge_final.mp4")
+                      updatePhase("Adicionando áudio", 86)
+
+                      SimpleMp4Muxer.mux(framesDir, fullAudioWav, finalTempMp4, aspect.width, aspect.height)
+                      if (!finalTempMp4.exists() || finalTempMp4.length() == 0L) {
+                          failAt("Falha no codificador MP4", "Erro na codificação H.264/AAC.")
+                          return
+                      }
+
+                      updatePhase("Salvando na galeria", 94)
+                      val savedUri = saveMp4ToGallery(finalTempMp4, script.videoTitle)
+                      if (savedUri == null) {
+                          failAt("Falha ao salvar na galeria", "Não foi possível gravar o arquivo MP4 no MediaStore.")
+                          return
+                      }
+
+                      updatePhase("Limpeza dos arquivos temporários", 98)
+                      cleanupTempDir()
+
+                      updatePhase("Vídeo finalizado", 100)
+                      _statusFlow.value = ExportStatus.Completed(savedUri, "Movies/JornalForge")
+                      stopForeground(STOP_FOREGROUND_REMOVE)
+                      stopSelf()
+
+                  } catch (e: CancellationException) {
+                      cleanupTempDir()
+                  } catch (e: Exception) {
+                      failAt("Falha inesperada", e.localizedMessage ?: "Erro desconhecido")
+                  }
+              }
+
+              private fun saveMp4ToGallery(sourceMp4: File, title: String): Uri? {
+                  return try {
+                      val cleanTitle = title.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(40)
+                      val fileName = "JornalForge_${cleanTitle}_${System.currentTimeMillis()}.mp4"
+                      val values = ContentValues().apply {
+                          put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+                          put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                          put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/JornalForge")
+                          put(MediaStore.Video.Media.IS_PENDING, 1)
+                      }
+
+                      val resolver = applicationContext.contentResolver
+                      val collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                      val itemUri = resolver.insert(collection, values) ?: return null
+
+                      resolver.openOutputStream(itemUri)?.use { outStream ->
+                          FileInputStream(sourceMp4).use { inStream ->
+                              inStream.copyTo(outStream)
+                          }
+                      }
+
+                      values.clear()
+                      values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                      resolver.update(itemUri, values, null, null)
+                      itemUri
+                  } catch (e: Exception) {
+                      null
+                  }
+              }
+
+              private fun cleanupTempDir() {
+                  try {
+                      val tempRoot = File(cacheDir, "jornalforge_job")
+                      if (tempRoot.exists()) tempRoot.deleteRecursively()
+                  } catch (_: Exception) {}
+              }
+
+              private fun updatePhase(phase: String, percent: Int) {
+                  _statusFlow.value = ExportStatus.Running(phase, percent)
+                  val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.notify(NOTIF_ID, buildNotification(phase, percent))
+              }
+
+              private fun failAt(exactPhase: String, details: String) {
+                  cleanupTempDir()
+                  _statusFlow.value = ExportStatus.Failed(exactPhase, details)
+                  stopForeground(STOP_FOREGROUND_REMOVE)
+                  stopSelf()
+              }
+
+              private fun buildNotification(phase: String, percent: Int): Notification {
+                  return NotificationCompat.Builder(this, CHANNEL_ID)
+                      .setContentTitle("JornalForge • Produção de Vídeo")
+                      .setContentText("$phase ($percent%)")
+                      .setSmallIcon(android.R.drawable.ic_media_play)
+                      .setOngoing(true)
+                      .setProgress(100, percent, false)
+                      .build()
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val channel = NotificationChannel(
+                          CHANNEL_ID,
+                          "Exportação JornalForge",
+                          NotificationManager.IMPORTANCE_LOW
+                      )
+                      val nm = getSystemService(NotificationManager::class.java)
+                      nm.createNotificationChannel(channel)
+                  }
+              }
+
+              override fun onBind(intent: Intent?): IBinder? = null
+          }
+          EOF
 
           cat << 'EOF' > app/src/main/java/com/jornalforge/app/video/SimpleMp4Muxer.kt
           package com.jornalforge.app.video
@@ -850,164 +1151,148 @@ jobs:
           }
           EOF
 
-      - name: Gerar Avatar Low-Poly 3D Fiel ao Modelo Enviado (Malha de Triangulos Simetrica)
+      - name: Gerar e Substituir Avatar 3D (Closed, Open, O)
         run: |
           pip install pillow
           python3 -c '
           import glob, os
-          from PIL import Image, ImageDraw
+          from PIL import Image, ImageDraw, ImageFilter
 
           res_dir = "app/src/main/res/drawable"
-          for name in ["reporter_closed", "reporter_open", "reporter_o", "reporter_a", "reporter_e", "reporter_i", "avatar_grid_2x2"]:
+          for name in ["reporter_closed", "reporter_open", "reporter_o"]:
               for f in glob.glob(os.path.join(res_dir, f"{name}.*")):
                   os.remove(f)
 
-          def render_model_avatar(phoneme):
-              # Renderiza em 300x300 com malha de triangulos low-poly identica a imagem de referencia e amplia 2x (600x600)
-              S = 300
-              img = Image.new("RGB", (S, S), (255, 255, 255))
-              d = ImageDraw.Draw(img)
+          def render_avatar(mouth_mode, out_path):
+              W, H = 600, 600
+              img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+              draw = ImageDraw.Draw(img)
 
-              def sym_poly(pts, col_left, col_right=None):
-                  if col_right is None:
-                      col_right = col_left
-                  d.polygon(pts, fill=col_left)
-                  r_pts = [(S - x, y) for (x, y) in pts]
-                  d.polygon(r_pts, fill=col_right)
+              # Sombra suave de estudio no fundo branco
+              shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              sdraw = ImageDraw.Draw(shadow)
+              sdraw.ellipse([130, 80, 470, 560], fill=(225, 228, 235, 255))
+              shadow = shadow.filter(ImageFilter.GaussianBlur(28))
+              img = Image.alpha_composite(img, shadow)
+              draw = Image.Draw(img) if hasattr(Image, "Draw") else ImageDraw.Draw(img)
 
-              # 1. PESCOCO MUSCULOSO E PEITORAL VISIVEL (TOM DOURADO/BRONZEADO DA IMAGEM)
-              sym_poly([(85, 200), (150, 200), (150, 285), (75, 255)], (209, 126, 36), (196, 115, 30))
-              # Sombra triangular embaixo do queixo
-              sym_poly([(100, 208), (150, 222), (150, 248), (94, 228)], (166, 92, 20), (156, 84, 18))
-              # Iluminacao lateral dos tendoes do pescoco
-              sym_poly([(82, 198), (102, 212), (96, 255), (72, 238)], (218, 136, 42), (204, 124, 36))
-              # V do peito aberto na gola
-              sym_poly([(102, 245), (150, 245), (150, 292), (118, 275)], (224, 146, 52), (210, 134, 44))
+              # Terno executivo preto (ombros largos e alinhados)
+              draw.polygon([(50, 600), (140, 445), (245, 420), (355, 420), (460, 445), (550, 600)], fill=(20, 22, 26))
+              draw.polygon([(80, 600), (155, 455), (250, 430), (350, 430), (445, 455), (520, 600)], fill=(28, 31, 36))
 
-              # 2. CAMISA AZUL LOW-POLY COM MALHA DE TRIANGULOS VISIVEL
-              # Ombros externos
-              sym_poly([(0, 276), (54, 250), (36, 300), (0, 300)], (102, 136, 204), (94, 126, 194))
-              sym_poly([(54, 250), (78, 268), (68, 300), (36, 300)], (88, 120, 188), (82, 112, 178))
-              sym_poly([(78, 268), (118, 282), (114, 300), (68, 300)], (76, 108, 174), (70, 100, 164))
-              # Gola alta dobrada (Colarinho azul)
-              sym_poly([(68, 222), (84, 208), (96, 252), (56, 250)], (92, 124, 190), (84, 114, 180))
-              # Pontas do colarinho
-              sym_poly([(56, 250), (96, 252), (124, 288), (74, 286)], (108, 142, 210), (98, 132, 200))
-              # Sombra interna da gola
-              sym_poly([(96, 252), (106, 248), (132, 292), (124, 288)], (52, 78, 136), (48, 72, 128))
-              # Fechamento central da camisa
-              sym_poly([(124, 288), (150, 284), (150, 300), (114, 300)], (84, 116, 184), (74, 104, 172))
+              # Camisa social branca
+              draw.polygon([(235, 420), (365, 420), (325, 585), (275, 585)], fill=(246, 248, 252))
+              # Colarinho
+              draw.polygon([(235, 415), (288, 468), (250, 495), (218, 435)], fill=(255, 255, 255), outline=(215, 220, 228))
+              draw.polygon([(365, 415), (312, 468), (350, 495), (382, 435)], fill=(255, 255, 255), outline=(215, 220, 228))
 
-              # 3. ORELHAS GEOMETRICAS
-              sym_poly([(64, 116), (78, 112), (78, 162), (66, 154)], (206, 126, 38), (194, 116, 34))
-              sym_poly([(68, 124), (76, 122), (76, 150), (70, 146)], (158, 88, 22), (148, 80, 18))
+              # Gravata social preta
+              draw.polygon([(284, 462), (316, 462), (322, 495), (278, 495)], fill=(18, 18, 22))
+              draw.polygon([(282, 495), (318, 495), (328, 600), (272, 600)], fill=(24, 25, 30))
 
-              # 4. ROSTO LOW-POLY (FACETAS GEOMETRICAS LARANJA-DOURADO FIEL A IMAGEM)
-              # Testa central e lateral
-              sym_poly([(110, 62), (150, 64), (150, 102), (108, 98)], (242, 166, 62), (234, 156, 56))
-              sym_poly([(80, 68), (110, 62), (108, 98), (78, 106)], (228, 148, 48), (216, 136, 42))
-              # Macas do rosto (bochecha superior)
-              sym_poly([(78, 106), (112, 118), (106, 152), (78, 148)], (232, 152, 52), (220, 140, 46))
-              sym_poly([(112, 118), (136, 118), (132, 152), (106, 152)], (240, 162, 58), (230, 150, 52))
-              # Lateral da mandibula (sombreada)
-              sym_poly([(78, 148), (106, 152), (98, 192), (82, 180)], (198, 118, 32), (186, 108, 28))
-              # Bochecha inferior e linha do sorriso
-              sym_poly([(106, 152), (132, 152), (124, 196), (98, 192)], (222, 142, 46), (212, 132, 40))
-              # Queixo forte quadrado e plano frontal
-              sym_poly([(98, 192), (124, 196), (128, 218), (112, 216)], (206, 126, 38), (196, 116, 32))
-              sym_poly([(124, 196), (150, 196), (150, 220), (128, 218)], (228, 148, 50), (218, 138, 44))
+              # Lapelas do terno
+              draw.polygon([(218, 430), (276, 585), (225, 600), (175, 470)], fill=(36, 39, 46))
+              draw.polygon([(382, 430), (324, 585), (375, 600), (425, 470)], fill=(36, 39, 46))
 
-              # 5. NARIZ POLIGONAL DEFINIDO
-              # Dorso do nariz
-              sym_poly([(141, 102), (150, 102), (150, 146), (139, 146)], (246, 174, 70), (232, 156, 56))
-              # Parede lateral do nariz
-              sym_poly([(130, 116), (141, 102), (139, 146), (128, 148)], (208, 128, 38), (194, 114, 32))
-              # Base inferior do nariz
-              sym_poly([(128, 148), (139, 146), (150, 146), (150, 154), (134, 154)], (176, 100, 24), (166, 92, 20))
-              # Filtro nasal (acima do labio)
-              sym_poly([(136, 154), (150, 154), (150, 165), (134, 165)], (216, 136, 42), (206, 126, 38))
+              # Pescoco masculino forte com sombreamento 3D
+              draw.rectangle([246, 345, 354, 450], fill=(196, 148, 118))
+              neck_sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              nsdraw = ImageDraw.Draw(neck_sh)
+              nsdraw.ellipse([242, 335, 358, 415], fill=(135, 92, 68, 155))
+              neck_sh = neck_sh.filter(ImageFilter.GaussianBlur(12))
+              img = Image.alpha_composite(img, neck_sh)
+              draw = ImageDraw.Draw(img)
 
-              # 6. OLHOS E SOBRANCELHAS GROSSAS ESCURAS
-              # Sombra da orbita ocular
-              sym_poly([(90, 102), (136, 106), (134, 122), (88, 118)], (184, 106, 26), (176, 98, 24))
-              # Esclera branca
-              sym_poly([(94, 110), (128, 111), (125, 121), (97, 121)], (248, 248, 248), (248, 248, 248))
-              # Iris e pupila escura grande (fiel ao modelo)
-              for cx in [112, 188]:
-                  d.polygon([(cx-8, 110), (cx+8, 110), (cx+7, 121), (cx-7, 121)], fill=(42, 22, 12))
-                  d.polygon([(cx-5, 111), (cx+5, 111), (cx+5, 120), (cx-5, 120)], fill=(12, 8, 6))
-                  # Brilho branco no canto superior esquerdo da pupila
-                  d.rectangle([cx-4, 112, cx-1, 115], fill=(255, 255, 255))
-              # Palpebra superior marcada
-              sym_poly([(92, 108), (130, 110), (128, 113), (94, 111)], (36, 18, 10), (36, 18, 10))
-              # Sobrancelhas grossas angulares inclinadas para o centro
-              sym_poly([(86, 98), (112, 94), (138, 102), (135, 110), (110, 102), (88, 104)], (34, 16, 8), (34, 16, 8))
+              # Orelhas
+              draw.ellipse([166, 228, 198, 298], fill=(198, 148, 118), outline=(162, 115, 88), width=2)
+              draw.ellipse([402, 228, 434, 298], fill=(198, 148, 118), outline=(162, 115, 88), width=2)
 
-              # 7. CABELO CASTANHO ESCURO LOW-POLY VOLUMOSO COM FACETAS TRIANGULARES
-              # Costeletas e laterais
-              sym_poly([(66, 72), (82, 64), (78, 116), (68, 114)], (44, 20, 10), (38, 16, 8))
-              sym_poly([(62, 42), (86, 38), (82, 64), (66, 72)], (56, 26, 12), (48, 22, 10))
-              # Topo e franja facetada (com leve bico de viuva no centro da testa)
-              sym_poly([(82, 64), (114, 58), (138, 64), (150, 68), (150, 44), (110, 40)], (64, 30, 14), (54, 24, 12))
-              sym_poly([(76, 24), (116, 12), (110, 40), (62, 42)], (78, 38, 18), (66, 32, 14))
-              sym_poly([(116, 12), (150, 8), (150, 44), (110, 40)], (92, 46, 22), (74, 36, 16))
-              # Detalhes de luz poligonal no topo do cabelo
-              d.polygon([(102, 18), (136, 14), (124, 34), (94, 32)], fill=(106, 54, 26))
-              d.polygon([(150, 14), (186, 18), (176, 34), (150, 32)], fill=(84, 42, 20))
+              # Rosto masculino forte e mandibula angular marcada
+              face_pts = [
+                  (184, 175), (186, 265), (202, 335),
+                  (256, 386), (300, 394), (344, 386),
+                  (398, 335), (414, 265), (416, 175),
+                  (375, 118), (300, 108), (225, 118)
+              ]
+              draw.polygon(face_pts, fill=(214, 166, 134))
 
-              # 8. QUATRO EXPRESSOES DE BOCA EXATAS DO MODELO (A, E, I, O)
-              if phoneme == "A":
-                  # Top-Left: Boca aberta grande arredondada/trapezoidal mostrando dentes superiores, lingua e fundo escuro
-                  d.polygon([(118, 164), (150, 162), (182, 164), (186, 178), (176, 195), (150, 198), (124, 195), (114, 178)], fill=(156, 84, 36))
-                  d.polygon([(121, 167), (150, 165), (179, 167), (182, 178), (173, 191), (150, 194), (127, 191), (118, 178)], fill=(38, 14, 14))
-                  # Dentes superiores brancos
-                  d.polygon([(125, 167), (175, 167), (173, 173), (127, 173)], fill=(246, 246, 246))
-                  # Lingua avermelhada/escura no fundo
-                  d.polygon([(130, 183), (170, 183), (172, 191), (150, 193), (128, 191)], fill=(112, 44, 42))
-              elif phoneme == "E":
-                  # Top-Right: Boca aberta mais larga mostrando dentes superiores, fundo escuro e faixa de dentes inferiores
-                  d.polygon([(112, 164), (150, 163), (188, 164), (184, 185), (168, 192), (132, 192), (116, 185)], fill=(156, 84, 36))
-                  d.polygon([(116, 167), (184, 167), (180, 182), (166, 188), (134, 188), (120, 182)], fill=(42, 16, 16))
-                  # Dentes superiores
-                  d.polygon([(120, 167), (180, 167), (178, 173), (122, 173)], fill=(246, 246, 246))
-                  # Dentes inferiores
-                  d.polygon([(126, 182), (174, 182), (166, 187), (134, 187)], fill=(236, 236, 236))
-              elif phoneme == "I":
-                  # Bottom-Left: Sorriso largo esticado com dentes cerrados brancos visiveis
-                  d.polygon([(112, 167), (188, 167), (184, 183), (168, 187), (132, 187), (116, 183)], fill=(156, 84, 36))
-                  d.polygon([(117, 170), (183, 170), (179, 181), (166, 184), (134, 184), (121, 181)], fill=(244, 244, 244))
-                  # Linha horizontal sutil entre as arcadas dentarias
-                  d.line([(119, 176), (181, 176)], fill=(160, 155, 150), width=1)
-              elif phoneme == "O":
-                  # Bottom-Right: Boca pequena franzida em formato O com labios carnudos
-                  d.polygon([(130, 164), (150, 162), (170, 164), (174, 178), (166, 193), (150, 195), (134, 193), (126, 178)], fill=(182, 102, 42))
-                  d.polygon([(136, 170), (150, 168), (164, 170), (166, 178), (160, 185), (150, 186), (140, 185), (134, 178)], fill=(32, 12, 12))
+              # Iluminacao 3D nas bochechas, testa e mandibula
+              shade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              sh_draw = ImageDraw.Draw(shade)
+              sh_draw.ellipse([215, 125, 385, 220], fill=(242, 202, 174, 110))
+              sh_draw.ellipse([200, 230, 275, 300], fill=(238, 195, 165, 80))
+              sh_draw.ellipse([325, 230, 400, 300], fill=(238, 195, 165, 80))
+              sh_draw.polygon([(184, 250), (202, 335), (245, 378), (225, 260)], fill=(158, 112, 84, 120))
+              sh_draw.polygon([(416, 250), (398, 335), (355, 378), (375, 260)], fill=(158, 112, 84, 120))
+              shade = shade.filter(ImageFilter.GaussianBlur(14))
+              img = Image.alpha_composite(img, shade)
 
-              # Amplia para 600x600 usando NEAREST para manter as arestas poligonais nitidas de videogame 3D
-              return img.resize((600, 600), Image.Resampling.NEAREST)
+              # Barba curta por fazer (castanho escuro, uniforme)
+              beard = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+              bdraw = ImageDraw.Draw(beard)
+              beard_pts = [
+                  (188, 258), (202, 335), (256, 386), (300, 394),
+                  (344, 386), (398, 335), (412, 258),
+                  (388, 296), (348, 314), (300, 310), (252, 314), (212, 296)
+              ]
+              bdraw.polygon(beard_pts, fill=(46, 34, 28, 125))
+              # Bigode e cavanhaque conectado
+              bdraw.polygon([(252, 312), (300, 304), (348, 312), (356, 332), (300, 326), (244, 332)], fill=(42, 30, 24, 155))
+              bdraw.rectangle([290, 342, 310, 382], fill=(42, 30, 24, 130))
+              beard = beard.filter(ImageFilter.GaussianBlur(4))
+              img = Image.alpha_composite(img, beard)
+              draw = ImageDraw.Draw(img)
 
-          img_a = render_model_avatar("A")
-          img_e = render_model_avatar("E")
-          img_i = render_model_avatar("I")
-          img_o = render_model_avatar("O")
+              # Nariz masculino definido e proporcional
+              draw.polygon([(300, 222), (283, 292), (300, 301), (317, 292)], fill=(196, 146, 114))
+              draw.line([(298, 224), (298, 290)], fill=(235, 194, 166), width=4)
+              draw.ellipse([282, 290, 294, 298], fill=(135, 92, 68))
+              draw.ellipse([306, 290, 318, 298], fill=(135, 92, 68))
 
-          # Salvar os 4 fonemas
-          img_a.save(os.path.join(res_dir, "reporter_a.png"), "PNG")
-          img_e.save(os.path.join(res_dir, "reporter_e.png"), "PNG")
-          img_i.save(os.path.join(res_dir, "reporter_i.png"), "PNG")
-          img_o.save(os.path.join(res_dir, "reporter_o.png"), "PNG")
+              # Olhos castanho escuro, expressao seria e confiante
+              for cx in [248, 352]:
+                  draw.polygon([(cx-26, 232), (cx-10, 222), (cx+12, 222), (cx+26, 232), (cx+12, 241), (cx-12, 241)], fill=(246, 246, 248))
+                  draw.ellipse([cx-11, 221, cx+11, 241], fill=(58, 36, 22))
+                  draw.ellipse([cx-5, 226, cx+5, 236], fill=(14, 10, 8))
+                  draw.ellipse([cx-7, 224, cx-2, 229], fill=(255, 255, 255))
+                  draw.line([(cx-27, 231), (cx-10, 221), (cx+12, 221), (cx+27, 231)], fill=(30, 20, 15), width=3)
 
-          # Mapear para os 3 recursos usados pelo motor de renderizacao do app
-          img_i.save(os.path.join(res_dir, "reporter_closed.png"), "PNG")
-          img_e.save(os.path.join(res_dir, "reporter_open.png"), "PNG")
+              # Sobrancelhas grossas castanho escuro
+              draw.polygon([(214, 212), (235, 202), (278, 210), (275, 219), (236, 212)], fill=(38, 26, 20))
+              draw.polygon([(386, 212), (365, 202), (322, 210), (325, 219), (364, 212)], fill=(38, 26, 20))
 
-          # Salvar tambem a grade 2x2 identica a referencia
-          grid = Image.new("RGB", (1204, 1204), (0, 0, 0))
-          grid.paste(img_a, (0, 0))
-          grid.paste(img_e, (604, 0))
-          grid.paste(img_i, (0, 604))
-          grid.paste(img_o, (604, 604))
-          grid.save(os.path.join(res_dir, "avatar_grid_2x2.png"), "PNG")
+              # Cabelo castanho escuro volumoso, ondulado e penteado para tras
+              hair_pts = [
+                  (178, 235), (168, 175), (185, 118), (232, 76),
+                  (300, 64), (368, 76), (415, 118), (432, 175),
+                  (422, 235), (406, 182), (382, 144), (336, 132),
+                  (300, 138), (264, 132), (218, 144), (194, 182)
+              ]
+              draw.polygon(hair_pts, fill=(36, 24, 18))
+              # Ondas volumosas no topo
+              draw.chord([195, 58, 330, 148], 0, 360, fill=(44, 30, 22))
+              draw.chord([270, 54, 405, 145], 0, 360, fill=(32, 21, 15))
+              draw.arc([210, 72, 385, 140], 185, 355, fill=(64, 45, 34), width=4)
+              draw.arc([230, 86, 365, 150], 185, 355, fill=(58, 40, 30), width=3)
+
+              # Variacoes apenas na expressao bucal
+              if mouth_mode == "closed":
+                  draw.polygon([(266, 334), (288, 329), (300, 332), (312, 329), (334, 334), (300, 336)], fill=(162, 102, 92))
+                  draw.polygon([(268, 335), (332, 335), (316, 344), (284, 344)], fill=(178, 116, 105))
+                  draw.line([(265, 335), (300, 336), (335, 335)], fill=(96, 52, 46), width=2)
+              elif mouth_mode == "open":
+                  draw.polygon([(265, 331), (288, 326), (300, 329), (312, 326), (335, 331), (315, 348), (285, 348)], fill=(172, 108, 98))
+                  draw.polygon([(274, 333), (326, 333), (316, 342), (284, 342)], fill=(54, 22, 24))
+                  draw.line([(282, 334), (318, 334)], fill=(232, 228, 224), width=2)
+              elif mouth_mode == "o":
+                  draw.ellipse([281, 322, 319, 356], fill=(168, 104, 94))
+                  draw.ellipse([287, 327, 313, 351], fill=(48, 18, 20))
+
+              img.convert("RGB").save(out_path, "PNG")
+
+          render_avatar("closed", os.path.join(res_dir, "reporter_closed.png"))
+          render_avatar("open", os.path.join(res_dir, "reporter_open.png"))
+          render_avatar("o", os.path.join(res_dir, "reporter_o.png"))
           '
 
       - name: Compilar APK
