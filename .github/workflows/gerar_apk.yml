@@ -27,7 +27,7 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Ajustar Manifesto, Dependencias, FrameRenderer e Opcao 57s no ScriptParser
+      - name: Ajustar Manifesto, Dependencias, Titulo (+35% com Margem) e Opcao 57s
         run: |
           python3 -c '
           import re, os
@@ -44,24 +44,42 @@ jobs:
           lines = [l for l in open(b) if "ffmpeg-kit" not in l]
           open(b, "w").writelines(lines)
 
-          # Ajustar FrameRenderer.kt: manter correcao de cor e texto +14% com margem de seguranca
+          # Ajustar FrameRenderer.kt:
+          # 1. Remover qualquer ColorFilter azulado
+          # 2. Aumentar o TITULO em +35% (muito mais em evidencia) e textos secundarios em +14%
+          # 3. Garantir quebra de linha automatica e recuo seguro para nao invadir o avatar nem sair da tela
           fr_path = "app/src/main/java/com/jornalforge/app/video/FrameRenderer.kt"
           if os.path.exists(fr_path):
               fr = open(fr_path).read()
               fr = re.sub(r"\.colorFilter\s*=\s*[^\n]+", "", fr)
 
-              def boost_font(match):
+              # Identificar os tamanhos de fonte: o maior textSize (ou associado a title) ganha +35%, os demais ganham +14%
+              sizes = [float(x) for x in re.findall(r"textSize\s*=\s*(\d+(?:\.\d+)?)f", fr)]
+              max_size = max(sizes) if sizes else 40.0
+
+              def boost_font_smart(match):
+                  full_line = match.group(0)
                   prefix = match.group(1)
                   val = float(match.group(2))
-                  new_val = round(val * 1.14, 1)
+                  # Se for a fonte do titulo (maior fonte ou contem title no contexto proximo), aumenta 35%
+                  if val >= max_size * 0.85:
+                      new_val = round(val * 1.35, 1)
+                  else:
+                      new_val = round(val * 1.14, 1)
                   return f"{prefix}{new_val}f"
 
-              fr = re.sub(r"(textSize\s*=\s*)(\d+(?:\.\d+)?)f", boost_font, fr)
+              fr = re.sub(r"(textSize\s*=\s*)(\d+(?:\.\d+)?)f", boost_font_smart, fr)
 
+              # Ajustar limite de caracteres por linha para o titulo grande quebrar certinho dentro da margem segura
               def shrink_line_chars(match):
                   prefix = match.group(1)
                   val = int(match.group(2))
-                  new_val = max(16, int(val * 0.85))
+                  if val <= 28:
+                      # Linha de titulo: reduz ~26% na contagem de caracteres por linha para compensar os +35% de fonte
+                      new_val = max(14, int(val * 0.74))
+                  else:
+                      # Linha de subtitulo/legenda: reduz ~15%
+                      new_val = max(18, int(val * 0.85))
                   return f"{prefix}{new_val}"
 
               fr = re.sub(r"(maxCharsPerLine\s*=\s*|wrapText\([^,]+,\s*)(\d+)", shrink_line_chars, fr)
@@ -455,7 +473,7 @@ jobs:
                       }
                   }
 
-                  StepCard(title = "ETAPA 4 • Voz Faber e Avatar Retro 32-bit / N64") {
+                  StepCard(title = "ETAPA 4 • Voz Faber e Avatar Low-Poly N64") {
                       val offlineReady = remember { PiperTtsEngine(context).isOfflineFaberModelInstalled() }
                       Text("• Voz Faber - Português Brasileiro (pt_BR-faber-medium.onnx)", color = Color.White, fontSize = 13.sp)
                       Text("• Motor Piper integrado | Velocidade 0.95 (Fala pausada e eloquente)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
@@ -465,7 +483,7 @@ jobs:
                           color = Color(0xFF81C784),
                           fontSize = 12.sp
                       )
-                      Text("• Estilo Visual: Retro 32-bit / N64 Low-Poly 3D (4 Expressões A, E, I, O)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
+                      Text("• Estilo Visual: Low-Poly 3D Fiel ao Modelo (4 Expressões A, E, I, O)", color = Color(0xFFB8C2D4), fontSize = 13.sp)
 
                       Spacer(modifier = Modifier.height(8.dp))
                       Text("Limiar RMS de Pausa Vocal: ${rmsThreshold.toInt()} (Padrão: 520 PCM 16-bit)", color = Color.White, fontSize = 12.sp)
@@ -832,7 +850,7 @@ jobs:
           }
           EOF
 
-      - name: Gerar e Substituir Avatar Retro 32-bit N64 Low-Poly (4 Cenas A, E, I, O)
+      - name: Gerar Avatar Low-Poly 3D Fiel ao Modelo Enviado (Malha de Triangulos Simetrica)
         run: |
           pip install pillow
           python3 -c '
@@ -844,125 +862,146 @@ jobs:
               for f in glob.glob(os.path.join(res_dir, f"{name}.*")):
                   os.remove(f)
 
-          def render_n64_panel(phoneme):
-              # Renderiza em baixa resolucao (150x150) sem anti-aliasing para autentica textura pixelada 32-bit / N64
-              W, H = 150, 150
-              img = Image.new("RGB", (W, H), (255, 255, 255))
+          def render_model_avatar(phoneme):
+              # Renderiza em 300x300 com malha de triangulos low-poly identica a imagem de referencia e amplia 2x (600x600)
+              S = 300
+              img = Image.new("RGB", (S, S), (255, 255, 255))
               d = ImageDraw.Draw(img)
 
-              # --- OMBROS MUSCULOSOS E CAMISA SOCIAL AZUL DE BOTAO (LOW-POLY FACETS) ---
-              # Ombro esquerdo e direito (facetas poligonais azuis)
-              d.polygon([(8, 150), (22, 114), (58, 106), (52, 150)], fill=(34, 88, 168))
-              d.polygon([(142, 150), (128, 114), (92, 106), (98, 150)], fill=(28, 74, 145))
-              # Peitoral central e camisa
-              d.polygon([(52, 150), (58, 106), (92, 106), (98, 150)], fill=(42, 104, 192))
-              # Sombras poligonais nas dobras da camisa
-              d.polygon([(8, 150), (22, 114), (32, 125), (24, 150)], fill=(24, 64, 128))
-              d.polygon([(142, 150), (128, 114), (118, 125), (126, 150)], fill=(20, 56, 114))
+              def sym_poly(pts, col_left, col_right=None):
+                  if col_right is None:
+                      col_right = col_left
+                  d.polygon(pts, fill=col_left)
+                  r_pts = [(S - x, y) for (x, y) in pts]
+                  d.polygon(r_pts, fill=col_right)
 
-              # Pescoco musculoso (trapezio largo e pele bronzeada facetada)
-              d.polygon([(46, 112), (56, 84), (75, 84), (75, 118)], fill=(196, 134, 92))
-              d.polygon([(104, 112), (94, 84), (75, 84), (75, 118)], fill=(176, 116, 76))
-              # Sombra sob o queixo
-              d.polygon([(56, 88), (94, 88), (86, 100), (64, 100)], fill=(138, 86, 54))
-              # Abertura V do colarinho
-              d.polygon([(62, 104), (88, 104), (75, 124)], fill=(168, 110, 72))
+              # 1. PESCOCO MUSCULOSO E PEITORAL VISIVEL (TOM DOURADO/BRONZEADO DA IMAGEM)
+              sym_poly([(85, 200), (150, 200), (150, 285), (75, 255)], (209, 126, 36), (196, 115, 30))
+              # Sombra triangular embaixo do queixo
+              sym_poly([(100, 208), (150, 222), (150, 248), (94, 228)], (166, 92, 20), (156, 84, 18))
+              # Iluminacao lateral dos tendoes do pescoco
+              sym_poly([(82, 198), (102, 212), (96, 255), (72, 238)], (218, 136, 42), (204, 124, 36))
+              # V do peito aberto na gola
+              sym_poly([(102, 245), (150, 245), (150, 292), (118, 275)], (224, 146, 52), (210, 134, 44))
 
-              # Colarinho azul com pontas marcadas e botoes brancos pixelados
-              d.polygon([(46, 108), (62, 102), (72, 124), (52, 120)], fill=(52, 122, 214), outline=(22, 58, 112))
-              d.polygon([(104, 108), (88, 102), (78, 124), (98, 120)], fill=(38, 96, 178), outline=(22, 58, 112))
-              # Vista da camisa e botoes
-              d.rectangle([72, 122, 78, 150], fill=(32, 82, 156))
-              d.rectangle([74, 128, 76, 130], fill=(240, 244, 250))
-              d.rectangle([74, 140, 76, 142], fill=(240, 244, 250))
+              # 2. CAMISA AZUL LOW-POLY COM MALHA DE TRIANGULOS VISIVEL
+              # Ombros externos
+              sym_poly([(0, 276), (54, 250), (36, 300), (0, 300)], (102, 136, 204), (94, 126, 194))
+              sym_poly([(54, 250), (78, 268), (68, 300), (36, 300)], (88, 120, 188), (82, 112, 178))
+              sym_poly([(78, 268), (118, 282), (114, 300), (68, 300)], (76, 108, 174), (70, 100, 164))
+              # Gola alta dobrada (Colarinho azul)
+              sym_poly([(68, 222), (84, 208), (96, 252), (56, 250)], (92, 124, 190), (84, 114, 180))
+              # Pontas do colarinho
+              sym_poly([(56, 250), (96, 252), (124, 288), (74, 286)], (108, 142, 210), (98, 132, 200))
+              # Sombra interna da gola
+              sym_poly([(96, 252), (106, 248), (132, 292), (124, 288)], (52, 78, 136), (48, 72, 128))
+              # Fechamento central da camisa
+              sym_poly([(124, 288), (150, 284), (150, 300), (114, 300)], (84, 116, 184), (74, 104, 172))
 
-              # --- CABECA E ROSTO LOW-POLY (PELE BRONZEADA / TANNED SKIN) ---
-              # Orelhas poligonais
-              d.polygon([(36, 54), (44, 52), (44, 70), (38, 68)], fill=(184, 122, 82))
-              d.polygon([(114, 54), (106, 52), (106, 70), (112, 68)], fill=(166, 108, 70))
+              # 3. ORELHAS GEOMETRICAS
+              sym_poly([(64, 116), (78, 112), (78, 162), (66, 154)], (206, 126, 38), (194, 116, 34))
+              sym_poly([(68, 124), (76, 122), (76, 150), (70, 146)], (158, 88, 22), (148, 80, 18))
 
-              # Faceta central da testa
-              d.polygon([(48, 34), (102, 34), (98, 50), (52, 50)], fill=(216, 152, 106))
-              # Facetas laterais da testa/temporas
-              d.polygon([(44, 40), (48, 34), (52, 50), (44, 54)], fill=(194, 132, 90))
-              d.polygon([(106, 40), (102, 34), (98, 50), (106, 54)], fill=(182, 120, 80))
+              # 4. ROSTO LOW-POLY (FACETAS GEOMETRICAS LARANJA-DOURADO FIEL A IMAGEM)
+              # Testa central e lateral
+              sym_poly([(110, 62), (150, 64), (150, 102), (108, 98)], (242, 166, 62), (234, 156, 56))
+              sym_poly([(80, 68), (110, 62), (108, 98), (78, 106)], (228, 148, 48), (216, 136, 42))
+              # Macas do rosto (bochecha superior)
+              sym_poly([(78, 106), (112, 118), (106, 152), (78, 148)], (232, 152, 52), (220, 140, 46))
+              sym_poly([(112, 118), (136, 118), (132, 152), (106, 152)], (240, 162, 58), (230, 150, 52))
+              # Lateral da mandibula (sombreada)
+              sym_poly([(78, 148), (106, 152), (98, 192), (82, 180)], (198, 118, 32), (186, 108, 28))
+              # Bochecha inferior e linha do sorriso
+              sym_poly([(106, 152), (132, 152), (124, 196), (98, 192)], (222, 142, 46), (212, 132, 40))
+              # Queixo forte quadrado e plano frontal
+              sym_poly([(98, 192), (124, 196), (128, 218), (112, 216)], (206, 126, 38), (196, 116, 32))
+              sym_poly([(124, 196), (150, 196), (150, 220), (128, 218)], (228, 148, 50), (218, 138, 44))
 
-              # Facetas das bochechas (esquerda iluminada, direita sombreada N64)
-              d.polygon([(44, 54), (68, 50), (66, 76), (46, 74)], fill=(210, 146, 100))
-              d.polygon([(106, 54), (82, 50), (84, 76), (104, 74)], fill=(192, 128, 86))
+              # 5. NARIZ POLIGONAL DEFINIDO
+              # Dorso do nariz
+              sym_poly([(141, 102), (150, 102), (150, 146), (139, 146)], (246, 174, 70), (232, 156, 56))
+              # Parede lateral do nariz
+              sym_poly([(130, 116), (141, 102), (139, 146), (128, 148)], (208, 128, 38), (194, 114, 32))
+              # Base inferior do nariz
+              sym_poly([(128, 148), (139, 146), (150, 146), (150, 154), (134, 154)], (176, 100, 24), (166, 92, 20))
+              # Filtro nasal (acima do labio)
+              sym_poly([(136, 154), (150, 154), (150, 165), (134, 165)], (216, 136, 42), (206, 126, 38))
 
-              # Mandibula quadrada forte e queixo poligonal
-              d.polygon([(46, 74), (66, 76), (64, 94), (52, 88)], fill=(188, 126, 84))
-              d.polygon([(104, 74), (84, 76), (86, 94), (98, 88)], fill=(172, 112, 74))
-              d.polygon([(66, 76), (84, 76), (86, 94), (75, 97), (64, 94)], fill=(202, 138, 94))
+              # 6. OLHOS E SOBRANCELHAS GROSSAS ESCURAS
+              # Sombra da orbita ocular
+              sym_poly([(90, 102), (136, 106), (134, 122), (88, 118)], (184, 106, 26), (176, 98, 24))
+              # Esclera branca
+              sym_poly([(94, 110), (128, 111), (125, 121), (97, 121)], (248, 248, 248), (248, 248, 248))
+              # Iris e pupila escura grande (fiel ao modelo)
+              for cx in [112, 188]:
+                  d.polygon([(cx-8, 110), (cx+8, 110), (cx+7, 121), (cx-7, 121)], fill=(42, 22, 12))
+                  d.polygon([(cx-5, 111), (cx+5, 111), (cx+5, 120), (cx-5, 120)], fill=(12, 8, 6))
+                  # Brilho branco no canto superior esquerdo da pupila
+                  d.rectangle([cx-4, 112, cx-1, 115], fill=(255, 255, 255))
+              # Palpebra superior marcada
+              sym_poly([(92, 108), (130, 110), (128, 113), (94, 111)], (36, 18, 10), (36, 18, 10))
+              # Sobrancelhas grossas angulares inclinadas para o centro
+              sym_poly([(86, 98), (112, 94), (138, 102), (135, 110), (110, 102), (88, 104)], (34, 16, 8), (34, 16, 8))
 
-              # Nariz low-poly em 3 facetas geometricas
-              d.polygon([(72, 48), (78, 48), (77, 68), (73, 68)], fill=(226, 164, 118))
-              d.polygon([(67, 66), (72, 48), (73, 68)], fill=(186, 124, 82))
-              d.polygon([(83, 66), (78, 48), (77, 68)], fill=(168, 108, 70))
-              d.polygon([(67, 66), (83, 66), (78, 71), (72, 71)], fill=(148, 92, 58))
+              # 7. CABELO CASTANHO ESCURO LOW-POLY VOLUMOSO COM FACETAS TRIANGULARES
+              # Costeletas e laterais
+              sym_poly([(66, 72), (82, 64), (78, 116), (68, 114)], (44, 20, 10), (38, 16, 8))
+              sym_poly([(62, 42), (86, 38), (82, 64), (66, 72)], (56, 26, 12), (48, 22, 10))
+              # Topo e franja facetada (com leve bico de viuva no centro da testa)
+              sym_poly([(82, 64), (114, 58), (138, 64), (150, 68), (150, 44), (110, 40)], (64, 30, 14), (54, 24, 12))
+              sym_poly([(76, 24), (116, 12), (110, 40), (62, 42)], (78, 38, 18), (66, 32, 14))
+              sym_poly([(116, 12), (150, 8), (150, 44), (110, 40)], (92, 46, 22), (74, 36, 16))
+              # Detalhes de luz poligonal no topo do cabelo
+              d.polygon([(102, 18), (136, 14), (124, 34), (94, 32)], fill=(106, 54, 26))
+              d.polygon([(150, 14), (186, 18), (176, 34), (150, 32)], fill=(84, 42, 20))
 
-              # --- SOBRANCELHAS GROSSAS E OLHOS 32-BIT ---
-              # Sobrancelhas castanho-escuras grossas e angulares
-              d.polygon([(49, 44), (69, 46), (69, 50), (49, 48)], fill=(42, 26, 16))
-              d.polygon([(101, 44), (81, 46), (81, 50), (101, 48)], fill=(42, 26, 16))
-
-              # Olhos geométricos
-              for cx in [59, 91]:
-                  d.polygon([(cx-8, 53), (cx+8, 53), (cx+6, 58), (cx-6, 58)], fill=(242, 242, 242))
-                  d.rectangle([cx-3, 53, cx+3, 58], fill=(56, 34, 18))
-                  d.rectangle([cx-1, 54, cx+1, 57], fill=(12, 10, 10))
-                  d.point((cx-2, 54), fill=(255, 255, 255))
-                  d.line([(cx-8, 52), (cx+8, 52)], fill=(30, 18, 12), width=1)
-
-              # --- CABELO CASTANHO ESCURO CURTO LOW-POLY ---
-              d.polygon([(42, 44), (45, 24), (60, 15), (90, 15), (105, 24), (108, 44), (101, 34), (88, 29), (62, 29), (49, 34)], fill=(48, 30, 18))
-              # Facetas superiores do cabelo (efeito poligonal N64)
-              d.polygon([(45, 24), (60, 15), (75, 22), (52, 31)], fill=(62, 40, 24))
-              d.polygon([(60, 15), (90, 15), (75, 22)], fill=(54, 34, 20))
-              d.polygon([(90, 15), (105, 24), (98, 31), (75, 22)], fill=(38, 22, 13))
-
-              # --- 4 EXPRESSOES DE BOCA (FONEMAS A, E, I, O) ---
+              # 8. QUATRO EXPRESSOES DE BOCA EXATAS DO MODELO (A, E, I, O)
               if phoneme == "A":
-                  # Top-Left: Fonema A - Boca bem aberta verticalmente mostrando dentes superiores e interior escuro
-                  d.polygon([(64, 74), (86, 74), (84, 90), (66, 90)], fill=(142, 78, 62))
-                  d.rectangle([67, 76, 83, 88], fill=(28, 12, 14))
-                  d.rectangle([68, 76, 82, 79], fill=(242, 242, 238))
+                  # Top-Left: Boca aberta grande arredondada/trapezoidal mostrando dentes superiores, lingua e fundo escuro
+                  d.polygon([(118, 164), (150, 162), (182, 164), (186, 178), (176, 195), (150, 198), (124, 195), (114, 178)], fill=(156, 84, 36))
+                  d.polygon([(121, 167), (150, 165), (179, 167), (182, 178), (173, 191), (150, 194), (127, 191), (118, 178)], fill=(38, 14, 14))
+                  # Dentes superiores brancos
+                  d.polygon([(125, 167), (175, 167), (173, 173), (127, 173)], fill=(246, 246, 246))
+                  # Lingua avermelhada/escura no fundo
+                  d.polygon([(130, 183), (170, 183), (172, 191), (150, 193), (128, 191)], fill=(112, 44, 42))
               elif phoneme == "E":
-                  # Top-Right: Fonema E - Boca moderadamente aberta na horizontal com cantos puxados e dentes visiveis
-                  d.polygon([(61, 75), (89, 75), (86, 85), (64, 85)], fill=(142, 78, 62))
-                  d.rectangle([64, 77, 86, 83], fill=(32, 14, 16))
-                  d.rectangle([65, 77, 85, 79], fill=(242, 242, 238))
-                  d.rectangle([67, 82, 83, 83], fill=(225, 225, 220))
+                  # Top-Right: Boca aberta mais larga mostrando dentes superiores, fundo escuro e faixa de dentes inferiores
+                  d.polygon([(112, 164), (150, 163), (188, 164), (184, 185), (168, 192), (132, 192), (116, 185)], fill=(156, 84, 36))
+                  d.polygon([(116, 167), (184, 167), (180, 182), (166, 188), (134, 188), (120, 182)], fill=(42, 16, 16))
+                  # Dentes superiores
+                  d.polygon([(120, 167), (180, 167), (178, 173), (122, 173)], fill=(246, 246, 246))
+                  # Dentes inferiores
+                  d.polygon([(126, 182), (174, 182), (166, 187), (134, 187)], fill=(236, 236, 236))
               elif phoneme == "I":
-                  # Bottom-Left: Fonema I - Labios esticados largos com dentes cerrados visiveis
-                  d.polygon([(60, 76), (90, 76), (88, 83), (62, 83)], fill=(142, 78, 62))
-                  d.rectangle([63, 78, 87, 81], fill=(240, 240, 236))
-                  d.line([(63, 79), (87, 79)], fill=(90, 80, 75), width=1)
+                  # Bottom-Left: Sorriso largo esticado com dentes cerrados brancos visiveis
+                  d.polygon([(112, 167), (188, 167), (184, 183), (168, 187), (132, 187), (116, 183)], fill=(156, 84, 36))
+                  d.polygon([(117, 170), (183, 170), (179, 181), (166, 184), (134, 184), (121, 181)], fill=(244, 244, 244))
+                  # Linha horizontal sutil entre as arcadas dentarias
+                  d.line([(119, 176), (181, 176)], fill=(160, 155, 150), width=1)
               elif phoneme == "O":
-                  # Bottom-Right: Fonema O - Labios arredondados em pequena abertura circular
-                  d.polygon([(68, 74), (82, 74), (85, 81), (82, 88), (68, 88), (65, 81)], fill=(142, 78, 62))
-                  d.polygon([(71, 77), (79, 77), (81, 81), (79, 85), (71, 85), (69, 81)], fill=(26, 10, 12))
+                  # Bottom-Right: Boca pequena franzida em formato O com labios carnudos
+                  d.polygon([(130, 164), (150, 162), (170, 164), (174, 178), (166, 193), (150, 195), (134, 193), (126, 178)], fill=(182, 102, 42))
+                  d.polygon([(136, 170), (150, 168), (164, 170), (166, 178), (160, 185), (150, 186), (140, 185), (134, 178)], fill=(32, 12, 12))
 
-              # Escala para 600x600 usando NEAREST para preservar os pixels nitidos de 32-bit sem anti-aliasing
+              # Amplia para 600x600 usando NEAREST para manter as arestas poligonais nitidas de videogame 3D
               return img.resize((600, 600), Image.Resampling.NEAREST)
 
-          img_a = render_n64_panel("A")
-          img_e = render_n64_panel("E")
-          img_i = render_n64_panel("I")
-          img_o = render_n64_panel("O")
+          img_a = render_model_avatar("A")
+          img_e = render_model_avatar("E")
+          img_i = render_model_avatar("I")
+          img_o = render_model_avatar("O")
 
-          # Salvar cada um dos 4 fonemas individualmente
+          # Salvar os 4 fonemas
           img_a.save(os.path.join(res_dir, "reporter_a.png"), "PNG")
           img_e.save(os.path.join(res_dir, "reporter_e.png"), "PNG")
           img_i.save(os.path.join(res_dir, "reporter_i.png"), "PNG")
           img_o.save(os.path.join(res_dir, "reporter_o.png"), "PNG")
 
-          # Mapear para os 3 drawables utilizados pelo motor de video do app
+          # Mapear para os 3 recursos usados pelo motor de renderizacao do app
           img_i.save(os.path.join(res_dir, "reporter_closed.png"), "PNG")
           img_e.save(os.path.join(res_dir, "reporter_open.png"), "PNG")
 
-          # Salvar tambem o grid 2x2 completo com linhas pretas finas separando os 4 quadrantes
+          # Salvar tambem a grade 2x2 identica a referencia
           grid = Image.new("RGB", (1204, 1204), (0, 0, 0))
           grid.paste(img_a, (0, 0))
           grid.paste(img_e, (604, 0))
